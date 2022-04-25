@@ -1,0 +1,173 @@
+#!/usr/bin/python2.7
+
+import getopt
+import os
+import sys
+
+LONG_HELP = True
+SHORT_HELP = False
+
+
+def main():
+    flags = sys.argv[1:]
+
+    try:
+        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "listKeys", "usingSets", "newSet=", "makeKey=", "getKeyTarget="])
+    except:
+        error("could not parse flags")
+        exit(1)
+
+    for o,a in opts:
+        if o == "--help": 
+            # Print Short help
+            help(SHORT_HELP)
+            exit(0)
+
+        elif o == "--Help": 
+            # Print Long help
+            help(LONG_HELP)
+            exit(0)
+
+        elif o == "--listKeys":
+            listKeysInPath()
+            exit(0)
+
+        elif o == "--usingSets":
+            listSetsInPath()
+            exit(0)
+
+        elif o == "--newSet":
+            # Make a new set
+            makeNewSet(a)
+            exit(0)
+
+        elif o == "--makeKey":
+            argSplit = a.split('::', 1)
+            if len(argSplit) is not 2: 
+                error("invalid input: %s" %a)
+                exit(1)
+            key = argSplit[0]
+            path = argSplit[1]
+            makeKeyInSet(key, path, "STAGE_SET")
+
+        elif o == "--getKeyTarget":
+            print(getKeyTarget(a))
+            exit(0)
+
+        else:
+            error("Unrecognized flag: %s" %(o))
+            exit(1)
+
+
+def longHelp():
+    print "  -h | --help                    Show short help menu"
+    print "  -H | --Help                    Show long help menu"
+    print "  -l | --listKeys                List the keys in the navtool's path"
+    print "  --usingSets                    List the sets in the current navtool's path"
+    print "  -n | --newSet NAME             Add a new set referenced by NAME"
+
+
+def help(doLongHelp):
+    print "nav [NAV_KEY] [-h |--help] [-H | --Help] [-l | --listKeys] [--usingSets] [-n | --newSet NAME]"
+    if doLongHelp:
+        longHelp()
+
+
+def error(message):
+    print "ERROR: %s" %(message)
+
+
+def success(message):
+    print "SUCCESS: %s" %(message)
+
+
+def getKeyTarget(targetKey):
+    navtoolPath = os.getenv('NAVTOOL_PATH')
+    allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
+
+    # Loop through the sets in the order that they show up 
+    # in the path variable and return the first key we find
+    sets = navtoolPath.split(':')
+    for s in sets:
+        setPath = "%s/%s" %(allSetsDir, s)
+        keys = os.listdir(setPath)
+        for k in keys:
+            if k == targetKey:
+                return os.readlink("%s/%s" %(setPath, k))
+    return ""
+
+
+def listKeysInPath():
+    navtoolPath = os.getenv('NAVTOOL_PATH')
+    allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
+
+    # Loop through the sets in the order that they show up
+    sets = navtoolPath.split(':')
+    for s in sets:
+        setPath = "%s/%s" %(allSetsDir, s)
+        if not os.path.isdir(setPath):
+            continue
+        keys = os.listdir(setPath)
+        for k in keys:
+            target =  os.readlink("%s/%s" %(setPath, k))
+            print "  %s::%s -> %s" %(s, padStrRight(k, 15), target)
+
+
+def listSetsInPath():
+    navtoolPath = os.getenv('NAVTOOL_PATH')
+    allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
+
+    # Loop through the sets in the order that they show up
+    sets = navtoolPath.split(':')
+    for s in sets:
+        print s
+
+
+def makeNewSet(name):
+    allSetsDir = "%s/sets" %(os.getenv('NAVTOOL_ROOT'))
+    if not os.path.isdir(allSetsDir):
+        os.mkdir(allSetsDir)
+
+    newSet = "%s/%s" %(allSetsDir, name)
+    if not os.path.isdir(newSet):
+        os.mkdir(newSet)
+        exit(0)
+    else:
+        error("set already exists: %s" %(name))
+        exit(1)
+    
+
+def makeKeyInSet(key, target, setName):
+    allSetsDir = "%s/sets" %(os.getenv('NAVTOOL_ROOT'))
+    if not os.path.isdir(allSetsDir):
+        os.mkdir(allSetsDir)
+
+    setDir = "%s/%s" %(allSetsDir, setName)
+
+    # If the set is the STAGE_SET then make it if it doesnt already exist
+    if setName == "STAGE_SET":
+        if not os.path.isdir(setDir):
+            os.mkdir(setDir)
+    else:
+        if not os.path.isdir(setDir):
+            error("set [%s] does not exist" %(setName))
+            exit(1)
+        
+    # Add the key to the set if it doesnt exist yet
+    keyPath = "%s/%s" %(setDir, key)
+    if os.path.islink(keyPath):
+        error("key [%s] already exists in set [%s]" %(key, setName))
+        exit(1)
+    else:
+        os.symlink(target, keyPath)
+        exit(0)
+
+
+def padStrRight(s, n):
+    while len(s) < n:
+        s = "%s " %s
+    return s
+
+if __name__ == "__main__":
+    main()
+

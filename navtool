@@ -1,0 +1,60 @@
+#!/usr/bin/env bash
+
+# navtool (nav)
+#   - Usage:
+#       - Create alias: alias nav=". ${HOME}/.navtool/navtool"
+#           - This alias will cause 'nav' to run navtool in the current shell allowing navtool to
+#             alter the environment of the current shell (vars, and cwd)
+#       - navtool parses the command line flags, and utilizes the navtool-util to process complex tasks
+#           - Any environment altering, like updating the ENV Variables or changing directories happens in
+#             the navtool
+#           - Any processing happens in the navtool-util
+
+UTIL="${NAVTOOL_ROOT}/navtool-util"
+
+if ! test "$#" ; then
+    eval "$UTIL --Help"
+fi
+
+while [[ "$#" -gt 0 ]]; do
+    case $1 in
+        -h | --help)    # Short Help
+            eval "$UTIL --help"
+            ;;
+        -H | --Help)    # Long Help
+            eval "$UTIL --Help"
+            ;;
+        -l | --listKeys)
+            eval "${UTIL} --listKeys"
+            ;;
+        --usingSets)
+            eval "${UTIL} --usingSets"
+            ;;
+        -n | --newSet)
+            setName="${2}"
+            eval "$UTIL --newSet ${setName}"
+            shift
+            ;;
+        -k | --key)
+            keyName="${2}"
+            eval "${UTIL} --makeKey ${keyName}::$(realpath .)"
+            shift
+            ;;
+        *)
+            if [[ "$1" =~ ^[^-][a-zA-Z0-9]+ ]]; then
+                destination=$(eval "$UTIL --getKeyTarget $1")
+                if [[ ! -z "$destination" ]]; then
+                    cd_cmd="cd ${destination}"
+                    echo "$cd_cmd"
+                    eval "$cd_cmd"
+                else
+                    echo "ERROR: Key [${1}] does not have any targets"
+                    return
+                fi
+            else
+                echo "ERROR: Flag not recognized: $1"
+                return
+            fi
+    esac
+    shift
+done
