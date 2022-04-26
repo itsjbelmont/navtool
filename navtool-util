@@ -7,12 +7,22 @@ import sys
 LONG_HELP = True
 SHORT_HELP = False
 
+STAGE_SET = "STAGE_SET"
+
+class colors:
+    PINK =      '\033[95m'
+    BLUE =      '\033[94m'
+    CYAN =      '\033[94m'
+    GREEN =     '\033[92m'
+    RED =       '\033[91'
+    YELLOW =    '\033[93m'
+    NONE =      '\033[0m'
 
 def main():
     flags = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "listKeys", "usingSets", "newSet=", "makeKey=", "getKeyTarget="])
+        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "usingSets", "newSet=", "makeKey=", "rmKey=", "getKeyTarget="])
     except:
         error("could not parse flags")
         exit(1)
@@ -26,6 +36,10 @@ def main():
         elif o == "--Help": 
             # Print Long help
             help(LONG_HELP)
+            exit(0)
+
+        elif o == "--showConfig":
+            showConfig()
             exit(0)
 
         elif o == "--listKeys":
@@ -42,13 +56,28 @@ def main():
             exit(0)
 
         elif o == "--makeKey":
+            # Make a new key in a set (STAGE_SET by default)
+            argSplit = a.split('::', 2)
+            if len(argSplit) is not 3: 
+                error("navtool-util: invalid input: %s" %a)
+                exit(1)
+            setName = argSplit[0]
+            key = argSplit[1]
+            path = argSplit[2]
+            makeKeyInSet(key, path, setName)
+
+        elif o == "--rmKey":
+            # remove a key in your path. Default is to remove the first occurance if
+            # setName is %FIRST_OCCURANCE%
             argSplit = a.split('::', 1)
             if len(argSplit) is not 2: 
-                error("invalid input: %s" %a)
+                error("navtool-util: invalid input: %s" %a)
                 exit(1)
-            key = argSplit[0]
-            path = argSplit[1]
-            makeKeyInSet(key, path, "STAGE_SET")
+            setName = argSplit[0]
+            if setName == "%FIRST_OCCURANCE%":
+                setName = None
+            key = argSplit[1]
+            removeKey(key, setName)
 
         elif o == "--getKeyTarget":
             print(getKeyTarget(a))
@@ -60,15 +89,20 @@ def main():
 
 
 def longHelp():
-    print "  -h | --help                    Show short help menu"
-    print "  -H | --Help                    Show long help menu"
-    print "  -l | --listKeys                List the keys in the navtool's path"
-    print "  --usingSets                    List the sets in the current navtool's path"
-    print "  -n | --newSet NAME             Add a new set referenced by NAME"
+    print "  --help                    Show short help menu [-h]"
+    print "  --Help                    Show long help menu [-H]" 
+    print "  --key NAME SET            Add a new key with NAME to the SET [-k]"
+    print "                              - SET is optional -> default set is STAGE_SET"
+    print "  --rmKey NAME SET          Remove the key with NAME from the SET [-r]"
+    print "                              - SET is optional -> default will remove first occurance of the key in your path"
+    print "  --listKeys                List the keys in the navtool's path [-l]"
+    print "  --set NAME                Add a new set referenced by NAME [-s]"
+    print "  --usingSets               List the sets in the current navtool's path"
+    print "  --showConfig              Show the configuration for navtool"
 
 
 def help(doLongHelp):
-    print "nav [NAV_KEY] [-h |--help] [-H | --Help] [-l | --listKeys] [--usingSets] [-n | --newSet NAME]"
+    print "nav [NAV_KEY] [--help] [--Help] [--key KEY_NAME (SET_NAME)] [--rmKey KEY_NAME (SET_NAME)] [--listKeys] [--set NAME] [--usingSets] [--showConfig]"
     if doLongHelp:
         longHelp()
 
@@ -80,6 +114,12 @@ def error(message):
 def success(message):
     print "SUCCESS: %s" %(message)
 
+
+def showConfig():
+    path = os.getenv("NAVTOOL_PATH")
+    root = os.getenv("NAVTOOL_ROOT")
+    print "%sPath:%s  %s" %(colors.BLUE, colors.NONE, path)
+    print "%sRoot:%s  %s" %(colors.BLUE, colors.NONE, root)
 
 def getKeyTarget(targetKey):
     navtoolPath = os.getenv('NAVTOOL_PATH')
@@ -110,7 +150,7 @@ def listKeysInPath():
         keys = os.listdir(setPath)
         for k in keys:
             target =  os.readlink("%s/%s" %(setPath, k))
-            print "  %s::%s -> %s" %(s, padStrRight(k, 15), target)
+            print " %s%s%s::%s%s%s -> %s%s%s" %(colors.PINK, s, colors.NONE, colors.BLUE, padStrRight(k, 15), colors.NONE, colors.YELLOW, target, colors.NONE)
 
 
 def listSetsInPath():
@@ -120,7 +160,7 @@ def listSetsInPath():
     # Loop through the sets in the order that they show up
     sets = navtoolPath.split(':')
     for s in sets:
-        print s
+        print "%s%s%s" %(colors.PINK, s, colors.NONE)
 
 
 def makeNewSet(name):
@@ -131,6 +171,7 @@ def makeNewSet(name):
     newSet = "%s/%s" %(allSetsDir, name)
     if not os.path.isdir(newSet):
         os.mkdir(newSet)
+        print "Made new set: %s" %(name)
         exit(0)
     else:
         error("set already exists: %s" %(name))
@@ -145,7 +186,7 @@ def makeKeyInSet(key, target, setName):
     setDir = "%s/%s" %(allSetsDir, setName)
 
     # If the set is the STAGE_SET then make it if it doesnt already exist
-    if setName == "STAGE_SET":
+    if setName == STAGE_SET:
         if not os.path.isdir(setDir):
             os.mkdir(setDir)
     else:
@@ -161,6 +202,49 @@ def makeKeyInSet(key, target, setName):
     else:
         os.symlink(target, keyPath)
         exit(0)
+
+def removeKey(key, setName):
+    navtoolPath = os.getenv('NAVTOOL_PATH')
+    allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
+
+    removedKey = False
+    if setName is None:
+        # Loop through the sets in the order that they show up in the path
+        # and remove the first occurance of the key
+        sets = navtoolPath.split(':')
+        for s in sets:
+            setPath = "%s/%s" %(allSetsDir, s)
+            if not os.path.isdir(setPath):
+                continue
+            keys = os.listdir(setPath)
+            for k in keys:
+                if k == key:
+                    keyPath = "%s/%s" %(setPath, k)
+                    if os.path.islink(keyPath):
+                        os.remove(keyPath)
+                        print "Removed key [%s] in set [%s]" %(k, s)
+                        removedKey= True
+                        break
+                if removedKey:
+                    break
+    else:
+        setPath = "%s/%s" %(allSetsDir, setName)
+        if not os.path.isdir(setPath):
+            error('specified set does not exist %s' %(setName))
+        else:
+            keys = os.listdir(setPath)
+            for k in keys:
+                if k == key:
+                    keyPath = "%s/%s" %(setPath, k)
+                    if os.path.islink(keyPath):
+                        os.remove(keyPath)
+                        print "Removed key [%s] in set [%s]" %(k, setName)
+                        removedKey= True
+                        break
+
+    # Check if we removed the key from the set
+    if not removedKey:
+        error('could not find key [%s] in your NAVTOOL_PATH' %(key))
 
 
 def padStrRight(s, n):

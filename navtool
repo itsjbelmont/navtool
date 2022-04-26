@@ -24,23 +24,54 @@ while [[ "$#" -gt 0 ]]; do
         -H | --Help)    # Long Help
             eval "$UTIL --Help"
             ;;
-        -l | --listKeys)
+        --showConfig) # Show the configuration
+            eval "${UTIL} --showConfig"
+            ;;
+        -l | --listKeys) # List the keys being used
             eval "${UTIL} --listKeys"
             ;;
-        --usingSets)
+        --usingSets) # Show the sets that are being used in the path
             eval "${UTIL} --usingSets"
             ;;
-        -n | --newSet)
+        -s | --set) # Add a new set
             setName="${2}"
             eval "$UTIL --newSet ${setName}"
             shift
             ;;
-        -k | --key)
+        -k | --key) # Add a new key
+            passedSetName=0
             keyName="${2}"
-            eval "${UTIL} --makeKey ${keyName}::$(realpath .)"
+            setName="STAGE_SET"
+            if [[ "$3" =~ ^[^-][a-zA-Z0-9]+ ]]; then
+                # Passing the set name is optional
+                setName="${3}"
+                passedSetName=1
+            fi
+            eval "${UTIL} --makeKey ${setName}::${keyName}::$(realpath .)"
+
             shift
+            if [[ ${passedSetName} -eq 1 ]]; then
+                shift
+            fi
             ;;
-        *)
+        -r | -rm | --rmKey) # Remove a key
+            passedSetName=0
+            keyName="${2}"
+            setName="%FIRST_OCCURANCE%"
+            if [[ "$3" =~ ^[^-][a-zA-Z0-9]+ ]]; then
+                # Passing the set name is optional
+                setName="${3}"
+                passedSetName=1
+            fi
+            eval "${UTIL} --rmKey ${setName}::${keyName}"
+
+            shift
+            if [[ ${passedSetName} -eq 1 ]]; then
+                shift
+            fi
+            ;;
+        *)  # default
+            # Check if we passed a key (doest start with '-')
             if [[ "$1" =~ ^[^-][a-zA-Z0-9]+ ]]; then
                 destination=$(eval "$UTIL --getKeyTarget $1")
                 if [[ ! -z "$destination" ]]; then

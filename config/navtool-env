@@ -1,0 +1,11 @@
+# Navtool configuration
+
+# Configure environment variable to point to the navtool directory
+export NAVTOOL_ROOT="${HOME}/.navtool"
+
+# Configure a path environment variable which contains the sets to be searched
+export NAVTOOL_PATH="MailSecur:STAGE_SET"
+
+# Alias nav to run the navtool script in the current shell
+alias nav=". ${NAVTOOL_ROOT}/navtool"
+
