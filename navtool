@@ -31,7 +31,16 @@ while [[ "$#" -gt 0 ]]; do
             eval "${UTIL} --listKeys"
             ;;
         -L | --listSets) # List the sets that are available
-            eval "${UTIL} --listSets"
+            if [[ "$2" =~ ^[^-][a-zA-Z0-9-]+ ]]; then
+                # Passing the set name is optional
+                argument="${2}"
+            fi
+                if [[ -z "$argument" ]]; then
+                    eval "${UTIL} --listSets without-keys"
+                else
+                    eval "${UTIL} --listSets ${argument}"
+                    shift
+                fi
             ;;
         --usingSets) # Show the sets that are being used in the path
             eval "${UTIL} --usingSets"

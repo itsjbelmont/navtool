@@ -25,7 +25,7 @@ def main():
     flags = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "listSets", "usingSets", "newSet=", "makeKey=", "rmKey=", "rmSet=", "getKeyTarget="])
+        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "listSets=", "usingSets", "newSet=", "makeKey=", "rmKey=", "rmSet=", "getKeyTarget="])
     except:
         error("could not parse flags")
         exit(1)
@@ -50,7 +50,13 @@ def main():
             exit(0)
         
         elif o == "--listSets":
-            listAllSets(DO_PRINT_KEYS)
+            if a == "with-keys":
+                listAllSets(DO_PRINT_KEYS)
+            elif a == "without-keys":
+                listAllSets(DONT_PRINT_KEYS)
+            else:
+                print "Unrecognized argument to --listSets: %s" %(a)
+                exit(1)
 
         elif o == "--usingSets":
             listSetsInPath()
@@ -109,7 +115,8 @@ def longHelp():
     print "                              - SET is optional -> default remove first key in NAVTOOL_PATH"
     print "  --rmSet SET               Delete the set with NAME (NOT YET IMPLEMENTED)"
     print "  --listKeys                List the keys in the navtool's path [-l]"
-    print "  --listSets                List the sets that are available to navtool"
+    print "  --listSets                List the sets that are available to navtool [-L]"
+    print "                              - Optional args to include keys: with-keys without-keys"
     print "  --usingSets               List the sets in the current navtool's path"
     print "  --showConfig              Show the configuration for navtool"
 
