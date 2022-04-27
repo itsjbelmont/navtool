@@ -3,6 +3,7 @@
 import getopt
 import os
 import sys
+import shutil
 
 LONG_HELP = True
 SHORT_HELP = False
@@ -22,7 +23,7 @@ def main():
     flags = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "usingSets", "newSet=", "makeKey=", "rmKey=", "getKeyTarget="])
+        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "usingSets", "newSet=", "makeKey=", "rmKey=", "rmSet=", "getKeyTarget="])
     except:
         error("could not parse flags")
         exit(1)
@@ -79,6 +80,11 @@ def main():
             key = argSplit[1]
             removeKey(key, setName)
 
+        elif o == "--rmSet":
+            # Remove a set from the sets directory
+            removeSet(a)
+            exit(0)
+
         elif o == "--getKeyTarget":
             print(getKeyTarget(a))
             exit(0)
@@ -91,18 +97,19 @@ def main():
 def longHelp():
     print "  --help                    Show short help menu [-h]"
     print "  --Help                    Show long help menu [-H]" 
-    print "  --key NAME SET            Add a new key with NAME to the SET [-k]"
-    print "                              - SET is optional -> default set is STAGE_SET"
-    print "  --rmKey NAME SET          Remove the key with NAME from the SET [-r]"
-    print "                              - SET is optional -> default will remove first occurance of the key in your path"
-    print "  --listKeys                List the keys in the navtool's path [-l]"
+    print "  --key KEY SET            Add a new key with NAME to the SET [-k]"
+    print "                              - SET is optional -> default is STAGE_SET"
     print "  --set NAME                Add a new set referenced by NAME [-s]"
+    print "  --rmKey KEY SET           Delete the key with NAME from the SET"
+    print "                              - SET is optional -> default remove first key in NAVTOOL_PATH"
+    print "  --rmSet SET               Delete the set with NAME (NOT YET IMPLEMENTED)"
+    print "  --listKeys                List the keys in the navtool's path [-l]"
     print "  --usingSets               List the sets in the current navtool's path"
     print "  --showConfig              Show the configuration for navtool"
 
 
 def help(doLongHelp):
-    print "nav [NAV_KEY] [--help] [--Help] [--key KEY_NAME (SET_NAME)] [--rmKey KEY_NAME (SET_NAME)] [--listKeys] [--set NAME] [--usingSets] [--showConfig]"
+    print "nav [NAV_KEY] [--help] [--Help] [--key KEY_NAME (SET_NAME)] [--rmKey KEY (SET)] [--rmSet SET] [--listKeys] [--set NAME] [--usingSets] [--showConfig]"
     if doLongHelp:
         longHelp()
 
@@ -203,6 +210,19 @@ def makeKeyInSet(key, target, setName):
         os.symlink(target, keyPath)
         exit(0)
 
+
+def removeSet(name):
+    allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
+    setPath = "%s/%s" %(allSetsDir, name)
+    if os.path.isdir(setPath):
+        Y_or_N = raw_input('Are you sure you want to delete [%s%s%s]: [y/n]' %(colors.YELLOW, name, colors.NONE))
+        if Y_or_N == "y" or Y_or_N == "Y" or Y_or_N == "yes":
+            shutil.rmtree(setPath)
+            print "Removed set: %s" %(name)
+        else:
+            print "Exiting."
+    
+
 def removeKey(key, setName):
     navtoolPath = os.getenv('NAVTOOL_PATH')
     allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
@@ -221,12 +241,17 @@ def removeKey(key, setName):
                 if k == key:
                     keyPath = "%s/%s" %(setPath, k)
                     if os.path.islink(keyPath):
-                        os.remove(keyPath)
-                        print "Removed key [%s] in set [%s]" %(k, s)
-                        removedKey= True
-                        break
-                if removedKey:
-                    break
+                        Y_or_N = raw_input('Are you sure you want to delete key [%s%s%s] in set [%s%s%s]: [y/n]: ' %(colors.YELLOW, k, colors.NONE, colors.YELLOW, s, colors.NONE))
+                        if Y_or_N == "y" or Y_or_N == "Y" or Y_or_N == "yes":
+                            os.remove(keyPath)
+                            print "Removed key [%s] in set [%s]" %(k, s)
+                            removedKey= True
+                            break
+                        else:
+                            print "Exiting."
+                            exit(0)
+            if removedKey:
+                break
     else:
         setPath = "%s/%s" %(allSetsDir, setName)
         if not os.path.isdir(setPath):
@@ -237,10 +262,15 @@ def removeKey(key, setName):
                 if k == key:
                     keyPath = "%s/%s" %(setPath, k)
                     if os.path.islink(keyPath):
-                        os.remove(keyPath)
-                        print "Removed key [%s] in set [%s]" %(k, setName)
-                        removedKey= True
-                        break
+                        Y_or_N = raw_input('Are you sure you want to delete key [%s%s%s] in set [%s%s%s]: [y/n]: ' %(colors.YELLOW, k, colors.NONE, colors.YELLOW, setName, colors.NONE))
+                        if Y_or_N == "y" or Y_or_N == "Y" or Y_or_N == "yes":
+                            os.remove(keyPath)
+                            print "Removed key [%s] in set [%s]" %(k, setName)
+                            removedKey= True
+                            break
+                        else:
+                            print "Exiting."
+                            exit(0)
 
     # Check if we removed the key from the set
     if not removedKey:

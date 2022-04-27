@@ -54,7 +54,7 @@ while [[ "$#" -gt 0 ]]; do
                 shift
             fi
             ;;
-        -r | -rm | --rmKey) # Remove a key
+        -rk | --rmKey) # Remove a key
             passedSetName=0
             keyName="${2}"
             setName="%FIRST_OCCURANCE%"
@@ -69,6 +69,11 @@ while [[ "$#" -gt 0 ]]; do
             if [[ ${passedSetName} -eq 1 ]]; then
                 shift
             fi
+            ;;
+        -rs | --rmSet) # Remove a set
+            setName="${2}"
+            eval "${UTIL} --rmSet ${setName}"
+            shift
             ;;
         *)  # default
             # Check if we passed a key (doest start with '-')
