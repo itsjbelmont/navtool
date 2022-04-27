@@ -1,5 +1,4 @@
 #!/usr/bin/python2.7
-
 import getopt
 import os
 import sys
@@ -7,6 +6,9 @@ import shutil
 
 LONG_HELP = True
 SHORT_HELP = False
+
+DONT_PRINT_KEYS = False
+DO_PRINT_KEYS = True
 
 STAGE_SET = "STAGE_SET"
 
@@ -23,7 +25,7 @@ def main():
     flags = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "usingSets", "newSet=", "makeKey=", "rmKey=", "rmSet=", "getKeyTarget="])
+        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "listSets", "usingSets", "newSet=", "makeKey=", "rmKey=", "rmSet=", "getKeyTarget="])
     except:
         error("could not parse flags")
         exit(1)
@@ -46,6 +48,9 @@ def main():
         elif o == "--listKeys":
             listKeysInPath()
             exit(0)
+        
+        elif o == "--listSets":
+            listAllSets(DO_PRINT_KEYS)
 
         elif o == "--usingSets":
             listSetsInPath()
@@ -97,19 +102,20 @@ def main():
 def longHelp():
     print "  --help                    Show short help menu [-h]"
     print "  --Help                    Show long help menu [-H]" 
-    print "  --key KEY SET            Add a new key with NAME to the SET [-k]"
+    print "  --key KEY SET             Add a new key with NAME to the SET [-k]"
     print "                              - SET is optional -> default is STAGE_SET"
     print "  --set NAME                Add a new set referenced by NAME [-s]"
     print "  --rmKey KEY SET           Delete the key with NAME from the SET"
     print "                              - SET is optional -> default remove first key in NAVTOOL_PATH"
     print "  --rmSet SET               Delete the set with NAME (NOT YET IMPLEMENTED)"
     print "  --listKeys                List the keys in the navtool's path [-l]"
+    print "  --listSets                List the sets that are available to navtool"
     print "  --usingSets               List the sets in the current navtool's path"
     print "  --showConfig              Show the configuration for navtool"
 
 
 def help(doLongHelp):
-    print "nav [NAV_KEY] [--help] [--Help] [--key KEY_NAME (SET_NAME)] [--rmKey KEY (SET)] [--rmSet SET] [--listKeys] [--set NAME] [--usingSets] [--showConfig]"
+    print "nav [NAV_KEY] [--help] [--Help] [--key KEY_NAME (SET_NAME)] [--rmKey KEY (SET)] [--rmSet SET] [--listKeys] [--listSets] [--set NAME] [--usingSets] [--showConfig]"
     if doLongHelp:
         longHelp()
 
@@ -158,6 +164,26 @@ def listKeysInPath():
         for k in keys:
             target =  os.readlink("%s/%s" %(setPath, k))
             print " %s%s%s::%s%s%s -> %s%s%s" %(colors.PINK, s, colors.NONE, colors.BLUE, padStrRight(k, 15), colors.NONE, colors.YELLOW, target, colors.NONE)
+
+
+def listAllSets(printKeys):
+    navtoolPath = os.getenv('NAVTOOL_PATH')
+    allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
+
+    # Loop through the sets in the order that they show up
+    sets = navtoolPath.split(':')
+    for s in sets:
+        setPath = "%s/%s" %(allSetsDir, s)
+        if not os.path.isdir(setPath):
+            continue
+        else:
+            print "  %s%s%s" %(colors.PINK, s, colors.NONE)
+            if printKeys:
+                keys = os.listdir(setPath)
+                for k in keys:
+                    target =  os.readlink("%s/%s" %(setPath, k))
+                    print "    %s%s%s -> %s%s%s" %(colors.BLUE, padStrRight(k, 15), colors.NONE, colors.YELLOW, target, colors.NONE)
+                
 
 
 def listSetsInPath():

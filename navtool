@@ -30,6 +30,9 @@ while [[ "$#" -gt 0 ]]; do
         -l | --listKeys) # List the keys being used
             eval "${UTIL} --listKeys"
             ;;
+        -L | --listSets) # List the sets that are available
+            eval "${UTIL} --listSets"
+            ;;
         --usingSets) # Show the sets that are being used in the path
             eval "${UTIL} --usingSets"
             ;;
