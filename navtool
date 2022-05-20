@@ -42,6 +42,34 @@ while [[ "$#" -gt 0 ]]; do
                     shift
                 fi
             ;;
+        -i | --include) # Add a new set to the path
+            if [[ "$2" =~ ^[^-][a-zA-Z0-9-]+ ]]; then
+                # Passing the set name is optional
+                setName="${2}"
+                shift
+            else
+                echo "ERROR: --include requires a set name to be passed"
+                return
+            fi
+
+            if [[ "$2" == "--back" ]]; then
+                position="back"
+                shift
+            else
+                position="front"
+            fi
+
+            eval "${UTIL} --canAddSet ${setName}::${position}"
+            valid="$?"  # return code 0 = valid
+            if [[ $valid == "0" ]]; then
+                if [[ "${position}" == "front" ]]; then
+                    NAVTOOL_PATH="${setName}:${NAVTOOL_PATH}"
+                else
+                    NAVTOOL_PATH="${NAVTOOL_PATH}:${setName}"
+                fi
+            fi # Error cases will be printed by the navtool-util
+            
+            ;;
         --usingSets) # Show the sets that are being used in the path
             eval "${UTIL} --usingSets"
             ;;
@@ -66,7 +94,7 @@ while [[ "$#" -gt 0 ]]; do
                 shift
             fi
             ;;
-        -rk | --rmKey) # Remove a key
+        -r | --rmKey) # Remove a key
             passedSetName=0
             keyName="${2}"
             setName="%FIRST_OCCURANCE%"
@@ -82,7 +110,7 @@ while [[ "$#" -gt 0 ]]; do
                 shift
             fi
             ;;
-        -rs | --rmSet) # Remove a set
+        -R | --rmSet) # Remove a set
             setName="${2}"
             eval "${UTIL} --rmSet ${setName}"
             shift

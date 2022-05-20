@@ -25,7 +25,7 @@ def main():
     flags = sys.argv[1:]
 
     try:
-        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "listSets=", "usingSets", "newSet=", "makeKey=", "rmKey=", "rmSet=", "getKeyTarget="])
+        opts, args = getopt.getopt(flags, "hH", ["help", "Help", "showConfig", "listKeys", "listSets=", "usingSets", "canAddSet=", "newSet=", "makeKey=", "rmKey=", "rmSet=", "getKeyTarget="])
     except:
         error("could not parse flags")
         exit(1)
@@ -66,6 +66,15 @@ def main():
             # Make a new set
             makeNewSet(a)
             exit(0)
+
+        elif o == "--canAddSet":
+            argSplit = a.split('::', 1)
+            if len(argSplit) is not 2:
+                error("navtool-util: invalid input: %s" %(a))
+                exit(1)
+            setName = argSplit[0]
+            position = argSplit[1]
+            canAddSet(setName, position)
 
         elif o == "--makeKey":
             # Make a new key in a set (STAGE_SET by default)
@@ -108,12 +117,14 @@ def main():
 def longHelp():
     print "  --help                    Show short help menu [-h]"
     print "  --Help                    Show long help menu [-H]" 
-    print "  --key KEY SET             Add a new key with NAME to the SET [-k]"
+    print "  --key KEY SET             Make a new key with NAME to the SET [-k]"
     print "                              - SET is optional -> default is STAGE_SET"
-    print "  --set NAME                Add a new set referenced by NAME [-s]"
-    print "  --rmKey KEY SET           Delete the key with NAME from the SET"
+    print "  --set NAME                Make a new empty set referenced by NAME [-s]"
+    print "  --include SET             Add SET to the path so its keys can be used [-i]"
+    print "                              - Default puts at front of path, use --back after SET to put at back"
+    print "  --rmKey KEY SET           Delete the key with NAME from the SET [-r]"
     print "                              - SET is optional -> default remove first key in NAVTOOL_PATH"
-    print "  --rmSet SET               Delete the set with NAME (NOT YET IMPLEMENTED)"
+    print "  --rmSet SET               Delete the set with NAME [-R]"
     print "  --listKeys                List the keys in the navtool's path [-l]"
     print "  --listSets                List the sets that are available to navtool [-L]"
     print "                              - Optional args to include keys: with-keys without-keys"
@@ -122,7 +133,7 @@ def longHelp():
 
 
 def help(doLongHelp):
-    print "nav [NAV_KEY] [--help] [--Help] [--key KEY_NAME (SET_NAME)] [--rmKey KEY (SET)] [--rmSet SET] [--listKeys] [--listSets] [--set NAME] [--usingSets] [--showConfig]"
+    print "nav [NAV_KEY] [--help] [--Help] [--key KEY_NAME (SET_NAME)] [--set NAME] [--include SET] [--rmKey KEY (SET)] [--rmSet SET] [--listKeys] [--listSets] [--usingSets] [--showConfig]"
     if doLongHelp:
         longHelp()
 
@@ -169,6 +180,7 @@ def listKeysInPath():
             continue
         keys = os.listdir(setPath)
         for k in keys:
+            # TODO: Dynamically decide amount of white space
             target =  os.readlink("%s/%s" %(setPath, k))
             print " %s%s%s::%s%s%s -> %s%s%s" %(colors.PINK, s, colors.NONE, colors.BLUE, padStrRight(k, 15), colors.NONE, colors.YELLOW, target, colors.NONE)
 
@@ -176,9 +188,12 @@ def listKeysInPath():
 def listAllSets(printKeys):
     navtoolPath = os.getenv('NAVTOOL_PATH')
     allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
+    if not os.path.isdir(allSetsDir):
+        print("There are no sets currently defined.")
+        return;
 
     # Loop through the sets in the order that they show up
-    sets = navtoolPath.split(':')
+    sets = os.listdir(allSetsDir)
     for s in sets:
         setPath = "%s/%s" %(allSetsDir, s)
         if not os.path.isdir(setPath):
@@ -211,10 +226,10 @@ def makeNewSet(name):
     newSet = "%s/%s" %(allSetsDir, name)
     if not os.path.isdir(newSet):
         os.mkdir(newSet)
-        print "Made new set: %s" %(name)
+        print "Made new set [%s%s%s]." %(colors.YELLOW, name, colors.NONE)
         exit(0)
     else:
-        error("set already exists: %s" %(name))
+        error("set already exists [%s%s%s]." %(colors.YELLOW, name, colors.NONE))
         exit(1)
     
 
@@ -240,6 +255,7 @@ def makeKeyInSet(key, target, setName):
         error("key [%s] already exists in set [%s]" %(key, setName))
         exit(1)
     else:
+        print("Added new key [%s%s%s] to set [%s%s%s]." %(colors.YELLOW, key, colors.NONE, colors.YELLOW, setName, colors.NONE))
         os.symlink(target, keyPath)
         exit(0)
 
@@ -248,12 +264,14 @@ def removeSet(name):
     allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
     setPath = "%s/%s" %(allSetsDir, name)
     if os.path.isdir(setPath):
-        Y_or_N = raw_input('Are you sure you want to delete [%s%s%s]: [y/n]' %(colors.YELLOW, name, colors.NONE))
+        Y_or_N = raw_input('Are you sure you want to delete the set [%s%s%s]: [y/n]' %(colors.YELLOW, name, colors.NONE))
         if Y_or_N == "y" or Y_or_N == "Y" or Y_or_N == "yes":
             shutil.rmtree(setPath)
             print "Removed set: %s" %(name)
         else:
             print "Exiting."
+    else:
+        error("Set does not exist [%s%s%s]." %(colors.YELLOW, name, colors.NONE))
     
 
 def removeKey(key, setName):
@@ -308,6 +326,30 @@ def removeKey(key, setName):
     # Check if we removed the key from the set
     if not removedKey:
         error('could not find key [%s] in your NAVTOOL_PATH' %(key))
+
+
+# -i --include
+def canAddSet(setName, position):
+    navtoolPath = os.getenv('NAVTOOL_PATH')
+    navtoolRoot = os.getenv('NAVTOOL_ROOT')
+    pathSplit = navtoolPath.split(':')
+    setPath = "%s/sets/%s" %(navtoolRoot, setName)
+
+    if not os.path.isdir(setPath):
+            # Cant add a set that doesnt exist
+            print 'Set [%s%s%s] does not exist!' %(colors.YELLOW, setName, colors.NONE)
+            exit(1)
+
+    for currentSetName in pathSplit:
+        # Check if the set already exists in the path
+        if currentSetName == setName:
+            print 'Set [%s%s%s] is already in your path!' %(colors.YELLOW, setName, colors.NONE)
+            exit(1)
+
+    #TODO: Look for keys that will be overshadowed to provide errors
+
+    # Success
+    exit(0)
 
 
 def padStrRight(s, n):
