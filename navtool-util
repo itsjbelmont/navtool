@@ -187,15 +187,20 @@ def listKeysInPath():
 
     # Loop through the sets in the order that they show up
     sets = navtoolPath.split(':')
-    for s in sets:
+    for i, s in enumerate(sets):
         setPath = "%s/%s" %(allSetsDir, s)
         if not os.path.isdir(setPath):
             continue
         keys = os.listdir(setPath)
+        longestKeyLen = 0
         for k in keys:
-            # TODO: Dynamically decide amount of white space
+            if len(k) > longestKeyLen:
+                longestKeyLen = len(k)
+        for k in keys:
             target =  os.readlink("%s/%s" %(setPath, k))
-            print " %s%s%s::%s%s%s -> %s%s%s" %(colors.PINK, s, colors.NONE, colors.BLUE, padStrRight(k, 15), colors.NONE, colors.YELLOW, target, colors.NONE)
+            print " %s%s%s::%s%s%s -> %s%s%s" %(colors.PINK, s, colors.NONE, colors.BLUE, padStrRight(k, longestKeyLen), colors.NONE, colors.YELLOW, target, colors.NONE)
+        if i < len(sets)-1:
+            print ""
 
 
 def listAllSets(printKeys):
@@ -212,13 +217,16 @@ def listAllSets(printKeys):
         if not os.path.isdir(setPath):
             continue
         else:
-            print "  %s%s%s" %(colors.PINK, s, colors.NONE)
+            print " %s%s%s" %(colors.PINK, s, colors.NONE)
             if printKeys:
                 keys = os.listdir(setPath)
+                longestKeyLen = 0
+                for k in keys:
+                    if len(k) > longestKeyLen:
+                        longestKeyLen = len(k)
                 for k in keys:
                     target =  os.readlink("%s/%s" %(setPath, k))
-                    print "    %s%s%s -> %s%s%s" %(colors.BLUE, padStrRight(k, 15), colors.NONE, colors.YELLOW, target, colors.NONE)
-                
+                    print "   %s%s%s -> %s%s%s" %(colors.BLUE, padStrRight(k, longestKeyLen), colors.NONE, colors.YELLOW, target, colors.NONE)
 
 
 def listSetsInPath():
@@ -273,6 +281,7 @@ def makeKeyInSet(key, target, setName):
         exit(0)
 
 
+# -R --rmSet
 def removeSet(name):
     allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
     setPath = "%s/%s" %(allSetsDir, name)
@@ -287,6 +296,7 @@ def removeSet(name):
         error("Set does not exist [%s%s%s]." %(colors.YELLOW, name, colors.NONE))
     
 
+# -r --rmKey
 def removeKey(key, setName):
     navtoolPath = os.getenv('NAVTOOL_PATH')
     allSetsDir = "%s/sets" %os.getenv('NAVTOOL_ROOT')
