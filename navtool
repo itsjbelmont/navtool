@@ -117,7 +117,7 @@ while [[ "$#" -gt 0 ]]; do
             ;;
         *)  # default
             # Check if we passed a key (doest start with '-')
-            if [[ "$1" =~ ^[^-][a-zA-Z0-9]+ ]]; then
+            if [[ "$1" =~ ^[^-][a-zA-Z0-9\./\\]+ ]]; then
                 destination=$(eval "$UTIL --getKeyTarget $1")
                 if [[ ! -z "$destination" ]]; then
                     cd_cmd="cd ${destination}"

@@ -161,10 +161,23 @@ def getKeyTarget(targetKey):
     sets = navtoolPath.split(':')
     for s in sets:
         setPath = "%s/%s" %(allSetsDir, s)
+        if not os.path.isdir(setPath):
+            continue
         keys = os.listdir(setPath)
         for k in keys:
             if k == targetKey:
                 return os.readlink("%s/%s" %(setPath, k))
+
+    # If user passed a real path they can navigate to it
+    if os.path.isdir(targetKey):
+        return targetKey
+
+    # If user passed a real file, they can navigate to its location
+    if os.path.isfile(targetKey):
+        pathOfFile = os.path.dirname(os.path.abspath(targetKey))
+        return pathOfFile
+
+    # Return empty path
     return ""
 
 
