@@ -52,7 +52,8 @@ When using multiple loaded NavSets simultaneously you can specify unique keys wi
 If duplicate keys exist you can specify which project's key to use by including its prefix.
 If no set is specified and you try to navigate to a duplicate key you will be prompted to select which set's key should be used.
 
-```
+```sh
+# Load multiple projects containing duplicate keys
 $ nav --load proj1
 $ nav --load proj2
 $ nav --keys
@@ -63,13 +64,22 @@ proj1:logs    -> /path/to/installed_application/proj1/logs
 proj2:proj    -> /path/to/proj2
 proj2:output  -> /path/to/proj2/output/dir
 
+# Navigate to a key that is unique (no duplicates)
 $ nav output
 cwd: /path/to/proj2/output/dir
 
+# Navigate to a key from a specific project (nav <set>:<key>)
 $ nav proj1:proj
 cwd: /path/to/proj1
-```
 
+# Navigate to a key with duplicate entries without specifying the set
+$ nav proj
+Select from duplicate <proj> keys:
+1. proj1:proj
+2. proj2:proj
+> proj1
+cwd: /path/to/proj1
+```
 
 ## System Requirements
 
