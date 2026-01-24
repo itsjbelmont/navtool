@@ -1,10 +1,19 @@
 # NavTool
 
-NavTool is a command line utility for efficiently navigating between commonly accessed pre-known directory paths.
+NavTool is a key/value command line utility for efficiently navigating between commonly accessed (pre-known) directory paths by assigning these directories to short "keys".
 
-## NavTool Quickstart
+```sh
+$ nav mydir # nav to the directory linked by key "mydir"
+```
 
-NavTool functions by allowing you to save key/directory pairs for commonly accessed directories and easily navigate to these directories via their key.
+## System Requirements
+
+* `Python3`
+
+
+## NavTool Overview
+
+NavTool allows you to save key/directory pairs for commonly accessed directories and easily navigate to these directories via their key.
 The utility is run via the `nav` command.
 
 In the simplest form, a NavTool workflow looks like this:
@@ -14,6 +23,17 @@ $ cd /my/path/to/project-root
 $ nav --save proj . # Save the CWD into the `proj` key
 $ cd /some/other/path
 $ nav proj # Navigate to the saved directory via the `proj` key
+cwd: /my/path/to/project-root
+```
+
+The `nav` command is fundamentally a `cd` call under the hood.
+If the tool can not find the specified key , it will pass the input directly to `cd`:
+
+```sh
+$ ls .
+dir1    dir2    dir3
+$ nav dir1 # use the nav command as a drop-in replacement for cd
+cwd: /full/path/to/dir1
 ```
 
 When working on multiple projects you can associate a set of keys with each project via "nav sets."
@@ -80,11 +100,6 @@ Select from duplicate <proj> keys:
 > proj1
 cwd: /path/to/proj1
 ```
-
-## System Requirements
-
-* `Python3`
-  * Run `python3 --version` to validate that python3 is installed
 
 ## Get Started
 
