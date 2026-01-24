@@ -143,3 +143,40 @@ cwd: /path/to/proj1
     **NOTE:**
     SQLite does not enforce foreign keys by default. You must do this after connecting:
     `conn.execute("PRAGMA foreign_keys = ON")`
+
+* A good filesystem structure:
+    ```
+    mytool/
+    ├── pyproject.toml
+    ├── README.md
+    ├── .gitignore
+    ├── requirements-dev.txt
+    │
+    ├── mytool/                 # Python package
+    │   ├── __init__.py
+    │   ├── cli.py              # Python CLI entrypoint
+    │   ├── db.py               # SQLite access layer
+    │   ├── paths.py            # Path resolution logic
+    │   └── resources/
+    │       └── schema.sql      # SQLite schema
+    │
+    ├── shells/                 # Shell-specific logic
+    │   ├── bash/
+    │   │   ├── mytool.sh       # sourced functions
+    │   │   └── bootstrap.sh    # shell setup
+    │   ├── zsh/
+    │   │   ├── mytool.zsh
+    │   │   └── bootstrap.zsh
+    │   └── completions/
+    │       ├── mytool.bash
+    │       └── _mytool         # zsh completion
+    │
+    ├── scripts/                # Dev / maintenance scripts
+    │   └── init_db.py
+    │
+    └── tests/
+        ├── conftest.py
+        ├── test_db.py
+        ├── test_cli.py
+        └── test_paths.py
+    ```
