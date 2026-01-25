@@ -27,7 +27,7 @@ cwd: /my/path/to/project-root
 ```
 
 The `nav` command is fundamentally a `cd` call under the hood.
-If the tool can not find the specified key , it will pass the input directly to `cd`:
+If the tool can not find the specified key, it will pass the input directly to `cd`:
 
 ```sh
 $ ls .
