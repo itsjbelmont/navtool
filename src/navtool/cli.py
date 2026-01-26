@@ -50,7 +50,7 @@ def set_delete(ctx, set_name):
         conn.commit()
         click.echo(f"Deleted the `{set_name}` set.")
     except Exception as e:
-        raise click.ClickExceptionk(str(e))
+        raise click.ClickException(str(e))
 
 
 @set.command("list")
