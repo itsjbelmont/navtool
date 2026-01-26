@@ -25,7 +25,7 @@ def set(ctx):
 
 
 @set.command("add")
-@click.argument("set_name")
+@click.argument("set_name", metavar="<NAME>")
 @click.pass_context
 def set_add(ctx, set_name):
     """Add a new set"""
@@ -39,7 +39,7 @@ def set_add(ctx, set_name):
 
 
 @set.command("delete")
-@click.argument("set_name")
+@click.argument("set_name", metavar="<NAME>")
 @click.pass_context
 def set_delete(ctx, set_name):
     """Delete a set"""
@@ -72,9 +72,9 @@ def entry(ctx):
 
 
 @entry.command("add")
-@click.argument("set_name")
-@click.argument("key")
-@click.argument("value")
+@click.argument("set_name", metavar="<SET_NAME>")
+@click.argument("key", metavar="<KEY_NAME>")
+@click.argument("value", metavar="<DIRECTORY>")
 @click.pass_context
 def entry_add(ctx, set_name, key, value):
     """Add an entry to a set"""
@@ -91,8 +91,8 @@ def entry_add(ctx, set_name, key, value):
 
 
 @entry.command("get")
-@click.argument("set_name")
-@click.argument("key")
+@click.argument("set_name", metavar="<SET_NAME>")
+@click.argument("key", metavar="<KEY_NAME>")
 @click.pass_context
 def entry_get(ctx, set_name, key):
     """Get the value of an entry in a set"""
