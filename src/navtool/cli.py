@@ -26,16 +26,28 @@ def set(ctx):
 
 @set.command("add")
 @click.argument("set_name", metavar="<NAME>")
+@click.option(
+    "--desc",
+    "-d",
+    "description",
+    default=None,
+    help="Optional description for the set",
+)
 @click.pass_context
-def set_add(ctx, set_name):
-    """Add a new set"""
+def set_add(ctx, set_name, description):
+    """Add a new set with an optional description"""
     conn = ctx.obj["conn"]
     try:
-        conn.execute("INSERT INTO sets (set_name) VALUES (?)", (set_name,))
+        conn.execute(
+            "INSERT INTO sets (set_name, description) VALUES (?, ?)",
+            (set_name, description),
+        )
         conn.commit()
     except Exception as e:
         raise click.ClickException(str(e))
     click.echo(f"Set '{set_name}' added.")
+    if description:
+        click.echo(f"Description: {description}")
 
 
 @set.command("delete")
