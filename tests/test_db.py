@@ -2,7 +2,7 @@ import sqlite3
 
 import pytest
 
-from navtool.db import create_connection, initialize_schema
+from navtool.db import get_connection
 
 
 @pytest.fixture
@@ -11,8 +11,7 @@ def db():
     Provides a fresh in-memory SQLite database for each test,
     with schema initialized and foreign keys enabled.
     """
-    conn = create_connection(":memory:")
-    initialize_schema(conn)
+    conn = get_connection(":memory:")
     yield conn
     conn.close()
 
