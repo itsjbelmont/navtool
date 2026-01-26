@@ -62,6 +62,30 @@ def set_list(ctx):
     for (name,) in rows:
         click.echo(name)
 
+@set.command("info")
+@click.argument("set_name", metavar="<NAME>")
+@click.pass_context
+def set_info(ctx, set_name):
+    """List all info for a set"""
+    conn = ctx.obj["conn"]
+    set_row = conn.execute(
+        "SELECT description FROM sets WHERE set_name=?",
+        (set_name,)
+    ).fetchone()
+    if not set_row:
+        raise click.ClickException(f"Set '{set_name}' does not exist.")
+    description = set_row[0] or "(no description)"
+    click.echo(f"{set_name}: {description}")
+    entries_rows = conn.execute(
+        "SELECT entry_key, entry_value FROM entries WHERE set_name=? ORDER BY entry_key",
+        (set_name,)
+    ).fetchall()
+    if not entries_rows:
+        click.echo("  (no entries)")
+        return
+    for key, value in entries_rows:
+        click.echo(f"  {key} -> {value}")
+
 
 # ----------------- 'entry' command group -----------------
 @cli.group()
