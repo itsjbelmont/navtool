@@ -1,4 +1,5 @@
 import sqlite3
+
 import pytest
 
 from navtool.db import create_connection, initialize_schema
