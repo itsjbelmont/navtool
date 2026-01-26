@@ -8,7 +8,7 @@ SCHEMA_PATH = Path(__file__).parent / "resources" / "schema.sql"
 def create_connection(db_path: str) -> sqlite3.Connection:
     """
     Create a SQLite connection with foreign keys enabled.
-    Does NOT initialize the schema.
+    Does NOT actually initialize the schema.
     """
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON;")
