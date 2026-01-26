@@ -11,7 +11,7 @@ def db():
     Provides a fresh in-memory SQLite database for each test,
     with schema initialized and foreign keys enabled.
     """
-    conn = create_connection()
+    conn = create_connection(":memory:")
     initialize_schema(conn)
     yield conn
     conn.close()
