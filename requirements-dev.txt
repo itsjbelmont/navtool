@@ -1,5 +1,13 @@
+black==26.1.0
+click==8.3.1
 iniconfig==2.3.0
+isort==7.0.0
+mypy_extensions==1.1.0
+-e git+https://github.com/itsjbelmont/navtool.git@9772377758248c394196cee008a14febd868580b#egg=navtool
 packaging==26.0
+pathspec==1.0.3
+platformdirs==4.5.1
 pluggy==1.6.0
 Pygments==2.19.2
 pytest==9.0.2
+pytokens==0.4.0

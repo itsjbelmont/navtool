@@ -1,2 +1,3 @@
 sets
 .venv/
+*.egg-info/

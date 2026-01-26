@@ -8,3 +8,10 @@ version = "0.1.0"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "black>=24.0",
+    "isort>=6.0"
+]
