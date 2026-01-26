@@ -45,11 +45,12 @@ def set_delete(ctx, set_name):
     """Delete a set"""
     conn = ctx.obj["conn"]
     try:
-      conn.execute("DELETE FROM sets WHERE set_name = ?", (set_name,))
-      conn.commit()
+      if click.confirm(f"Are you sure you want to delete the set '{set_name}'?", default=False):
+        conn.execute("DELETE FROM sets WHERE set_name = ?", (set_name,))
+        conn.commit()
+        click.echo(f"Deleted the `{set_name}` set.")
     except Exception as e:
         raise click.ClickExceptionk(str(e))
-    click.echo(f"Deleted the `{set_name}` set.")
 
 
 @set.command("list")
