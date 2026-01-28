@@ -41,14 +41,67 @@ def create_set(ctx, set_name, description):
     if description:
         click.echo(f"Description: {description}")
 
+
+# ----------------- 'activate' command group -----------------
+@cli.command("activate")
+@click.argument("set_name", metavar="<SET_NAME>")
+@click.pass_context
+def activate_set(ctx, set_name):
+    """Activate a set so that you can easily navigate to its keys"""
+    conn = ctx.obj["conn"]
+    try:
+        row = conn.execute(
+            "SELECT is_active FROM sets WHERE set_name = ?",
+            (set_name,),
+        ).fetchone()
+        is_active = row[0]
+        if is_active:
+            click.echo(f"Set `{set_name}` is already active. Nothing to do.")
+            return
+
+        conn.execute(
+            "UPDATE sets SET is_active = ? WHERE set_name = ?",
+            (1, set_name)
+        )
+        conn.commit()
+    except Exception as e:
+        raise click.ClickException(str(e))
+    click.echo(f"Set `{set_name}` has been activated.")
+
+
+# ----------------- 'deactivate' command group -----------------
+@cli.command("deactivate")
+@click.argument("set_name", metavar="<SET_NAME>")
+@click.pass_context
+def deactivate_set(ctx, set_name):
+    """Deactivate a set so the keys can no longer be accessed"""
+    conn = ctx.obj["conn"]
+    try:
+        row = conn.execute(
+            "SELECT is_active FROM sets WHERE set_name = ?",
+            (set_name,),
+        ).fetchone()
+        is_active = row[0]
+        if not is_active:
+            click.echo(f"Set `{set_name}` is already deactivated. Nothing to do.")
+            return
+        conn.execute(
+            "UPDATE sets SET is_active = ? WHERE set_name = ?",
+            (0, set_name)
+        )
+        conn.commit()
+    except Exception as e:
+        raise click.ClickException(str(e))
+    click.echo(f"Set `{set_name}` has been deactivated.")
+
 # ----------------- 'set' command group -----------------
 @cli.group()
 @click.pass_context
-def set(ctx):
-    """Manage sets"""
+def sets(ctx):
+    """Manage sets that have already been created"""
     pass
 
-@set.command("delete")
+@sets.command("delete")
 @click.argument("set_name", metavar="<NAME>")
 @click.pass_context
 def set_delete(ctx, set_name):
@@ -63,7 +116,7 @@ def set_delete(ctx, set_name):
         raise click.ClickException(str(e))
 
 
-@set.command("list")
+@sets.command("list")
 @click.pass_context
 def set_list(ctx):
     """List all sets"""
@@ -72,7 +125,7 @@ def set_list(ctx):
     for (name,) in rows:
         click.echo(name)
 
-@set.command("info")
+@sets.command("info")
 @click.argument("set_name", metavar="<NAME>")
 @click.pass_context
 def set_info(ctx, set_name):
