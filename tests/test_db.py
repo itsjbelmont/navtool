@@ -23,11 +23,11 @@ def test_insert_set_with_description(db):
     )
 
     row = db.execute(
-        "SELECT set_name, description FROM sets WHERE set_name = ?",
+        "SELECT set_name, description, is_active FROM sets WHERE set_name = ?",
         ("projects",),
     ).fetchone()
 
-    assert row == ("projects", "Work-related directories")
+    assert row == ("projects", "Work-related directories", 0)
 
 
 def test_insert_set_without_description(db):
@@ -42,6 +42,41 @@ def test_insert_set_without_description(db):
     ).fetchone()
 
     assert row[0] is None
+  
+
+def test_insert_active_set(db):
+    db.execute(
+        "INSERT INTO sets (set_name, is_active) VALUES (?, ?)",
+        ("active_set", 1)
+    )
+
+    row = db.execute(
+        "SELECT is_active FROM sets WHERE set_name = ?",
+        ("active_set",),
+    ).fetchone()
+
+    assert row[0] == 1
+
+
+def test_insert_set_then_activate(db):
+    db.execute(
+        "INSERT INTO sets (set_name) VALUES (?)",
+        ("test_activation",),
+    )
+    row = db.execute(
+        "SELECT is_active FROM sets WHERE set_name = ?",
+        ("test_activation",),
+    ).fetchone()
+    assert row[0] == 0
+    db.execute(
+        "UPDATE sets SET is_active = ? WHERE set_name = ?",
+        (1, "test_activation")
+    ) 
+    row = db.execute(
+        "SELECT is_active FROM sets WHERE set_name = ?",
+        ("test_activation",),
+    ).fetchone()
+    assert row[0] == 1
 
 
 def test_insert_entry(db):
@@ -71,7 +106,7 @@ def test_insert_entry(db):
 
 
 def test_duplicate_entry_key_in_same_set_fails(db):
-    db.execute("INSERT INTO sets VALUES (?, ?)", ("projects", None))
+    db.execute("INSERT INTO sets (set_name, description) VALUES (?, ?)", ("projects", None))
 
     db.execute(
         "INSERT INTO entries VALUES (?, ?, ?)",
@@ -86,8 +121,8 @@ def test_duplicate_entry_key_in_same_set_fails(db):
 
 
 def test_same_entry_key_in_different_sets_allowed(db):
-    db.execute("INSERT INTO sets VALUES (?, ?)", ("projects", None))
-    db.execute("INSERT INTO sets VALUES (?, ?)", ("personal", None))
+    db.execute("INSERT INTO sets (set_name, description) VALUES (?, ?)", ("projects", None))
+    db.execute("INSERT INTO sets (set_name, description) VALUES (?, ?)", ("personal", None))
 
     db.execute(
         "INSERT INTO entries VALUES (?, ?, ?)",

@@ -9,7 +9,7 @@ DEFAULT_DB_PATH = "~/.navtool.db"
 @click.pass_context
 def cli(ctx):
     """
-    navtool – navigate directories using named sets and entries.
+    navtool – navigate directories by associating short keys to commonly accessed directory paths. Keys can be organized into sets for multiple projects.
     """
     db_path = str(Path(DEFAULT_DB_PATH).expanduser())
     ctx.ensure_object(dict)
