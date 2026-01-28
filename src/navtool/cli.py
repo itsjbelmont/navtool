@@ -99,7 +99,58 @@ def deactivate_set(ctx, set_name):
         raise click.ClickException(str(e))
     click.echo(f"Deactivated set: {set_name}")
 
-# ----------------- 'set' command group -----------------
+
+# ----------------- 'add' command group -----------------
+@cli.command()
+@click.argument("key_name", metavar="<KEY_NAME>")
+@click.argument("directory", metavar="<DIRECTORY>")
+@click.pass_context
+def add(ctx, key_name, directory):
+    """Add a new key/value navigation entry to a set"""
+    conn = ctx.obj["conn"]
+
+    full_path = str(Path(directory).expanduser().resolve())
+    if not Path(full_path).exists() or not Path(full_path).is_dir():
+        raise click.ClickException(f"Directory does not exist: {full_path}")
+
+    active_sets = conn.execute(
+        "SELECT set_name FROM sets WHERE is_active=1 ORDER BY set_name"
+    ).fetchall()
+    if not active_sets:
+        raise click.ClickException("No active sets found. Please activate a set first.")
+
+    if len(active_sets) == 1:
+        target_set = active_sets[0][0]
+    else:
+        click.echo("Multiple active sets detected:")
+        for i, (set_name,) in enumerate(active_sets, start=1):
+            click.echo(f"{i}. {set_name}")
+
+        choice = click.prompt(
+            "Select which set to add this entry to:",
+            type=click.IntRange(1, len(active_sets)),
+        )
+        target_set = active_sets[choice - 1][0]
+
+    key_exists_in_set = conn.execute(
+        "SELECT 1 FROM entries WHERE set_name=? AND entry_key=?",
+        (target_set, key_name)
+    ).fetchone()
+    if key_exists_in_set:
+        raise click.ClickException(f"Key '{key_name}' already exists in set '{target_set}'")
+
+    if not click.confirm(f"Add entry '{key_name}' -> '{full_path}' to set '{target_set}'?", default=True):
+        click.echo("Operation cancelled.")
+        return
+    conn.execute(
+        "INSERT INTO entries (set_name, entry_key, entry_value) VALUES (?, ?, ?)",
+        (target_set, key_name, full_path)
+    )
+    conn.commit()
+    click.echo(f"Added entry '{key_name}' -> '{full_path}' to set '{target_set}'")
+
+
+# ----------------- 'sets' command group -----------------
 @cli.group()
 @click.pass_context
 def sets(ctx):
