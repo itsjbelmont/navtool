@@ -15,17 +15,9 @@ def cli(ctx):
     ctx.ensure_object(dict)
     ctx.obj["conn"] = get_connection(db_path)
 
-
-# ----------------- 'set' command group -----------------
-@cli.group()
-@click.pass_context
-def set(ctx):
-    """Manage sets"""
-    pass
-
-
-@set.command("add")
-@click.argument("set_name", metavar="<NAME>")
+# ----------------- 'create' command group for creating new sets-----------------
+@cli.command("create")
+@click.argument("set_name", metavar="<SET_NAME>")
 @click.option(
     "--desc",
     "-d",
@@ -34,8 +26,8 @@ def set(ctx):
     help="Optional description for the set",
 )
 @click.pass_context
-def set_add(ctx, set_name, description):
-    """Add a new set with an optional description"""
+def create_set(ctx, set_name, description):
+    """Create a new navtool set to organize keys inside of"""
     conn = ctx.obj["conn"]
     try:
         conn.execute(
@@ -49,6 +41,12 @@ def set_add(ctx, set_name, description):
     if description:
         click.echo(f"Description: {description}")
 
+# ----------------- 'set' command group -----------------
+@cli.group()
+@click.pass_context
+def set(ctx):
+    """Manage sets"""
+    pass
 
 @set.command("delete")
 @click.argument("set_name", metavar="<NAME>")
