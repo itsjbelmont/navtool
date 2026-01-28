@@ -35,11 +35,16 @@ def create_set(ctx, set_name, description):
             (set_name, description),
         )
         conn.commit()
+
+        row = conn.execute(
+            "SELECT set_name, description FROM sets WHERE set_name = ?",
+            (set_name,)
+        ).fetchone()
+        saved_name, saved_description = row
+        click.echo(f"Created new set: {saved_name} - {saved_description if saved_description else "(no description)"}")
+        click.echo(f" > Add keys to the set and then run `navtool activate {saved_name}` to activate the set.")
     except Exception as e:
         raise click.ClickException(str(e))
-    click.echo(f"Set '{set_name}' added.")
-    if description:
-        click.echo(f"Description: {description}")
 
 
 # ----------------- 'activate' command group -----------------
@@ -56,7 +61,7 @@ def activate_set(ctx, set_name):
         ).fetchone()
         is_active = row[0]
         if is_active:
-            click.echo(f"Set `{set_name}` is already active. Nothing to do.")
+            click.echo(f"Set already active: {set_name}")
             return
 
         conn.execute(
@@ -66,7 +71,7 @@ def activate_set(ctx, set_name):
         conn.commit()
     except Exception as e:
         raise click.ClickException(str(e))
-    click.echo(f"Set `{set_name}` has been activated.")
+    click.echo(f"Activated set: {set_name}")
 
 
 # ----------------- 'deactivate' command group -----------------
@@ -83,7 +88,7 @@ def deactivate_set(ctx, set_name):
         ).fetchone()
         is_active = row[0]
         if not is_active:
-            click.echo(f"Set `{set_name}` is already deactivated. Nothing to do.")
+            click.echo(f"Set already inactive: {set_name}")
             return
         conn.execute(
             "UPDATE sets SET is_active = ? WHERE set_name = ?",
@@ -92,7 +97,7 @@ def deactivate_set(ctx, set_name):
         conn.commit()
     except Exception as e:
         raise click.ClickException(str(e))
-    click.echo(f"Set `{set_name}` has been deactivated.")
+    click.echo(f"Deactivated set: {set_name}")
 
 # ----------------- 'set' command group -----------------
 @cli.group()
@@ -117,13 +122,40 @@ def set_delete(ctx, set_name):
 
 
 @sets.command("list")
+@click.option(
+    "--desc",
+    "-d",
+    is_flag=True,  # boolean flag
+    help="Optionally output the descriptions for the set",
+)
 @click.pass_context
-def set_list(ctx):
+def set_list(ctx, desc):
     """List all sets"""
     conn = ctx.obj["conn"]
-    rows = conn.execute("SELECT set_name FROM sets ORDER BY set_name").fetchall()
-    for (name,) in rows:
-        click.echo(name)
+
+    # Fetch description only if requested
+    if desc:
+        rows = conn.execute(
+            "SELECT set_name, is_active, description FROM sets ORDER BY set_name"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT set_name, is_active FROM sets ORDER BY set_name"
+        ).fetchall()
+
+    for row in rows:
+        name = row[0]
+        is_active = row[1]
+        color = "green" if is_active else "yellow"
+        text = click.style(f"{name}", fg=color)
+
+        if desc:
+            description = row[2] or "(no description)"
+            click.echo(f"{text} – {description}")
+        else:
+            click.echo(text)
+
+
 
 @sets.command("info")
 @click.argument("set_name", metavar="<NAME>")
