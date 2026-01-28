@@ -4,6 +4,7 @@ from navtool.db import get_connection
 
 DEFAULT_DB_PATH = "~/.navtool.db"
 
+
 # ----------------- Top-level CLI -----------------
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.pass_context
@@ -14,6 +15,7 @@ def cli(ctx):
     db_path = str(Path(DEFAULT_DB_PATH).expanduser())
     ctx.ensure_object(dict)
     ctx.obj["conn"] = get_connection(db_path)
+
 
 # ----------------- 'create' command group for creating new sets-----------------
 @cli.command("create")
@@ -37,12 +39,15 @@ def create_set(ctx, set_name, description):
         conn.commit()
 
         row = conn.execute(
-            "SELECT set_name, description FROM sets WHERE set_name = ?",
-            (set_name,)
+            "SELECT set_name, description FROM sets WHERE set_name = ?", (set_name,)
         ).fetchone()
         saved_name, saved_description = row
-        click.echo(f"Created new set: {saved_name} - {saved_description if saved_description else "(no description)"}")
-        click.echo(f" > Add keys to the set and then run `navtool activate {saved_name}` to activate the set.")
+        click.echo(
+            f"Created new set: {saved_name} - {saved_description if saved_description else "(no description)"}"
+        )
+        click.echo(
+            f" > Add keys to the set and then run `navtool activate {saved_name}` to activate the set."
+        )
     except Exception as e:
         raise click.ClickException(str(e))
 
@@ -64,10 +69,7 @@ def activate_set(ctx, set_name):
             click.echo(f"Set already active: {set_name}")
             return
 
-        conn.execute(
-            "UPDATE sets SET is_active = ? WHERE set_name = ?",
-            (1, set_name)
-        )
+        conn.execute("UPDATE sets SET is_active = ? WHERE set_name = ?", (1, set_name))
         conn.commit()
     except Exception as e:
         raise click.ClickException(str(e))
@@ -90,10 +92,7 @@ def deactivate_set(ctx, set_name):
         if not is_active:
             click.echo(f"Set already inactive: {set_name}")
             return
-        conn.execute(
-            "UPDATE sets SET is_active = ? WHERE set_name = ?",
-            (0, set_name)
-        )
+        conn.execute("UPDATE sets SET is_active = ? WHERE set_name = ?", (0, set_name))
         conn.commit()
     except Exception as e:
         raise click.ClickException(str(e))
@@ -133,18 +132,21 @@ def add(ctx, key_name, directory):
         target_set = active_sets[choice - 1][0]
 
     key_exists_in_set = conn.execute(
-        "SELECT 1 FROM entries WHERE set_name=? AND entry_key=?",
-        (target_set, key_name)
+        "SELECT 1 FROM entries WHERE set_name=? AND entry_key=?", (target_set, key_name)
     ).fetchone()
     if key_exists_in_set:
-        raise click.ClickException(f"Key '{key_name}' already exists in set '{target_set}'")
+        raise click.ClickException(
+            f"Key '{key_name}' already exists in set '{target_set}'"
+        )
 
-    if not click.confirm(f"Add entry '{key_name}' -> '{full_path}' to set '{target_set}'?", default=True):
+    if not click.confirm(
+        f"Add entry '{key_name}' -> '{full_path}' to set '{target_set}'?", default=True
+    ):
         click.echo("Operation cancelled.")
         return
     conn.execute(
         "INSERT INTO entries (set_name, entry_key, entry_value) VALUES (?, ?, ?)",
-        (target_set, key_name, full_path)
+        (target_set, key_name, full_path),
     )
     conn.commit()
     click.echo(f"Added entry '{key_name}' -> '{full_path}' to set '{target_set}'")
@@ -157,6 +159,7 @@ def sets(ctx):
     """Manage sets that have already been created"""
     pass
 
+
 @sets.command("delete")
 @click.argument("set_name", metavar="<NAME>")
 @click.pass_context
@@ -164,10 +167,12 @@ def set_delete(ctx, set_name):
     """Delete a set"""
     conn = ctx.obj["conn"]
     try:
-      if click.confirm(f"Are you sure you want to delete the set '{set_name}'?", default=False):
-        conn.execute("DELETE FROM sets WHERE set_name = ?", (set_name,))
-        conn.commit()
-        click.echo(f"Deleted the `{set_name}` set.")
+        if click.confirm(
+            f"Are you sure you want to delete the set '{set_name}'?", default=False
+        ):
+            conn.execute("DELETE FROM sets WHERE set_name = ?", (set_name,))
+            conn.commit()
+            click.echo(f"Deleted the `{set_name}` set.")
     except Exception as e:
         raise click.ClickException(str(e))
 
@@ -207,7 +212,6 @@ def set_list(ctx, desc):
             click.echo(text)
 
 
-
 @sets.command("info")
 @click.argument("set_name", metavar="<NAME>")
 @click.pass_context
@@ -215,8 +219,7 @@ def set_info(ctx, set_name):
     """List all info for a set"""
     conn = ctx.obj["conn"]
     set_row = conn.execute(
-        "SELECT description FROM sets WHERE set_name=?",
-        (set_name,)
+        "SELECT description FROM sets WHERE set_name=?", (set_name,)
     ).fetchone()
     if not set_row:
         raise click.ClickException(f"Set '{set_name}' does not exist.")
@@ -224,53 +227,10 @@ def set_info(ctx, set_name):
     click.echo(f"{set_name}: {description}")
     entries_rows = conn.execute(
         "SELECT entry_key, entry_value FROM entries WHERE set_name=? ORDER BY entry_key",
-        (set_name,)
+        (set_name,),
     ).fetchall()
     if not entries_rows:
         click.echo("  (no entries)")
         return
     for key, value in entries_rows:
         click.echo(f"  {key} -> {value}")
-
-
-# ----------------- 'entry' command group -----------------
-@cli.group()
-@click.pass_context
-def entry(ctx):
-    """Manage entries in sets"""
-    pass
-
-
-@entry.command("add")
-@click.argument("set_name", metavar="<SET_NAME>")
-@click.argument("key", metavar="<KEY_NAME>")
-@click.argument("value", metavar="<DIRECTORY>")
-@click.pass_context
-def entry_add(ctx, set_name, key, value):
-    """Add an entry to a set"""
-    conn = ctx.obj["conn"]
-    try:
-        conn.execute(
-            "INSERT INTO entries (set_name, entry_key, entry_value) VALUES (?, ?, ?)",
-            (set_name, key, value),
-        )
-        conn.commit()
-    except Exception as e:
-        raise click.ClickException(str(e))
-    click.echo(f"Entry '{key}' added to set '{set_name}'.")
-
-
-@entry.command("get")
-@click.argument("set_name", metavar="<SET_NAME>")
-@click.argument("key", metavar="<KEY_NAME>")
-@click.pass_context
-def entry_get(ctx, set_name, key):
-    """Get the value of an entry in a set"""
-    conn = ctx.obj["conn"]
-    row = conn.execute(
-        "SELECT entry_value FROM entries WHERE set_name=? AND entry_key=?",
-        (set_name, key),
-    ).fetchone()
-    if not row:
-        raise click.ClickException(f"No entry '{key}' in set '{set_name}'")
-    click.echo(row[0])

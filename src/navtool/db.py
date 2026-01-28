@@ -21,13 +21,11 @@ def schema_initialized(conn: sqlite3.Connection) -> bool:
     We check for a known table instead of checking filesystem state
     so this works for both file-based and :memory: databases.
     """
-    row = conn.execute(
-        """
+    row = conn.execute("""
         SELECT name
         FROM sqlite_master
         WHERE type='table' AND name='sets';
-        """
-    ).fetchone()
+        """).fetchone()
     return row is not None
 
 
