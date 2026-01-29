@@ -9,7 +9,7 @@ DEFAULT_DB_PATH = "~/.navtool.db"
 @click.pass_context
 def cli(ctx):
     """
-    navtool – navigate directories by associating short keys to commonly accessed directory paths. Keys can be organized into sets to support switching between projects.
+    nav – navigate directories by associating short keys to commonly accessed directory paths. Keys can be organized into sets to support switching between projects.
     """
     db_path = str(Path(DEFAULT_DB_PATH).expanduser())
     ctx.ensure_object(dict)
@@ -73,7 +73,7 @@ def create_set(ctx, set_name, description):
             f"Created new set: {saved_name} - {saved_description if saved_description else "(no description)"}"
         )
         click.echo(
-            f" > Add keys to the set and then run `navtool activate {saved_name}` to activate the set."
+            f" > Add keys to the set and then run `nav activate {saved_name}` to activate the set."
         )
     except Exception as e:
         raise click.ClickException(str(e))
