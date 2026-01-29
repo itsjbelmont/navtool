@@ -9,6 +9,19 @@ $ nav mydir # nav to the directory linked by key "mydir"
 ## System Requirements
 
 * `Python3`
+* `pipx` ? Just for mac? (`brew install pipx`)
+
+## Get Started
+
+1. Clone the repository
+
+1. Install navtool with pipx (from the project root dir): `pipx install .`
+
+1. TODO: Run setup script for your shell
+
+1. Restart terminals
+
+**Note:** To uninstall: `pipx uninstall navtool`
 
 
 ## NavTool Overview
