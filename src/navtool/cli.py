@@ -16,6 +16,34 @@ def cli(ctx):
     ctx.obj["conn"] = get_connection(db_path)
 
 
+# ----------------- `path` command
+@cli.command("path")
+@click.argument("key_name", metavar="<KEY_NAME>")
+@click.pass_context
+def get_path(ctx, key_name):
+    conn = ctx.obj["conn"]
+    try:
+      rows = conn.execute(
+          """
+          SELECT e.entry_key, e.entry_value, e.set_name
+          FROM entries e
+          JOIN sets s ON e.set_name = s.set_name
+          WHERE e.entry_key = ?
+            AND s.is_active = 1
+          """,
+          (key_name,),
+      ).fetchall()
+      if len(rows) == 0:
+          click.echo(f"Error: Could not find the key: {key_name}")
+      elif len(rows) > 1:
+          click.echo(f"Warning: Found the key {key_name} in multiple active sets. This is not yet handled properly.")
+      else:
+          click.echo(rows[0][1])
+
+    except Exception as e:
+        raise click.ClickException(str(e))
+
+
 # ----------------- 'create' command group for creating new sets-----------------
 @cli.command("create")
 @click.argument("set_name", metavar="<SET_NAME>")
