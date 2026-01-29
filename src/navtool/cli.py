@@ -4,13 +4,12 @@ from navtool.db import get_connection
 
 DEFAULT_DB_PATH = "~/.navtool.db"
 
-
 # ----------------- Top-level CLI -----------------
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.pass_context
 def cli(ctx):
     """
-    navtool – navigate directories by associating short keys to commonly accessed directory paths. Keys can be organized into sets for multiple projects.
+    navtool – navigate directories by associating short keys to commonly accessed directory paths. Keys can be organized into sets to support switching between projects.
     """
     db_path = str(Path(DEFAULT_DB_PATH).expanduser())
     ctx.ensure_object(dict)
@@ -29,7 +28,7 @@ def cli(ctx):
 )
 @click.pass_context
 def create_set(ctx, set_name, description):
-    """Create a new navtool set to organize keys inside of"""
+    """Create a new set that directory keys can be associated with"""
     conn = ctx.obj["conn"]
     try:
         conn.execute(
@@ -51,13 +50,29 @@ def create_set(ctx, set_name, description):
     except Exception as e:
         raise click.ClickException(str(e))
 
+@cli.command("delete")
+@click.argument("set_name", metavar="<NAME>")
+@click.pass_context
+def set_delete(ctx, set_name):
+    """Delete a set and all of the keys associated with that set"""
+    conn = ctx.obj["conn"]
+    try:
+        if click.confirm(
+            f"Are you sure you want to delete the set '{set_name}'?", default=False
+        ):
+            conn.execute("DELETE FROM sets WHERE set_name = ?", (set_name,))
+            conn.commit()
+            click.echo(f"Deleted the `{set_name}` set.")
+    except Exception as e:
+        raise click.ClickException(str(e))
 
-# ----------------- 'activate' command group -----------------
-@cli.command("activate")
+
+# ----------------- 'use' command group -----------------
+@cli.command("use")
 @click.argument("set_name", metavar="<SET_NAME>")
 @click.pass_context
 def activate_set(ctx, set_name):
-    """Activate a set so that you can easily navigate to its keys"""
+    """Mark a set as "active" so that you can navigate to its keys"""
     conn = ctx.obj["conn"]
     try:
         row = conn.execute(
@@ -66,7 +81,7 @@ def activate_set(ctx, set_name):
         ).fetchone()
         is_active = row[0]
         if is_active:
-            click.echo(f"Set already active: {set_name}")
+            click.echo(f"Set already in use: {set_name}")
             return
 
         conn.execute("UPDATE sets SET is_active = ? WHERE set_name = ?", (1, set_name))
@@ -76,12 +91,12 @@ def activate_set(ctx, set_name):
     click.echo(f"Activated set: {set_name}")
 
 
-# ----------------- 'deactivate' command group -----------------
-@cli.command("deactivate")
+# ----------------- 'unuse' command group -----------------
+@cli.command("unuse")
 @click.argument("set_name", metavar="<SET_NAME>")
 @click.pass_context
 def deactivate_set(ctx, set_name):
-    """Deactivate a set so the keys can no longer be accessed"""
+    """Mark a set as "inactive" so its keys can no longer be accessed"""
     conn = ctx.obj["conn"]
     try:
         row = conn.execute(
@@ -90,7 +105,7 @@ def deactivate_set(ctx, set_name):
         ).fetchone()
         is_active = row[0]
         if not is_active:
-            click.echo(f"Set already inactive: {set_name}")
+            click.echo(f"Set is not currently in use: {set_name}")
             return
         conn.execute("UPDATE sets SET is_active = ? WHERE set_name = ?", (0, set_name))
         conn.commit()
@@ -99,13 +114,13 @@ def deactivate_set(ctx, set_name):
     click.echo(f"Deactivated set: {set_name}")
 
 
-# ----------------- 'add' command group -----------------
-@cli.command()
+# ----------------- 'key' command -----------------
+@cli.command("key")
 @click.argument("key_name", metavar="<KEY_NAME>")
 @click.argument("directory", metavar="<DIRECTORY>")
 @click.pass_context
-def add(ctx, key_name, directory):
-    """Add a new key/value navigation entry to a set"""
+def key(ctx, key_name, directory):
+    """Assign a key to a directory"""
     conn = ctx.obj["conn"]
 
     full_path = str(Path(directory).expanduser().resolve())
@@ -140,7 +155,7 @@ def add(ctx, key_name, directory):
         )
 
     if not click.confirm(
-        f"Add entry '{key_name}' -> '{full_path}' to set '{target_set}'?", default=True
+        f"Register '{key_name}' -> '{full_path}' to set '{target_set}'?", default=True
     ):
         click.echo("Operation cancelled.")
         return
@@ -149,48 +164,29 @@ def add(ctx, key_name, directory):
         (target_set, key_name, full_path),
     )
     conn.commit()
-    click.echo(f"Added entry '{key_name}' -> '{full_path}' to set '{target_set}'")
+    click.echo(f"Registered entry '{key_name}' -> '{full_path}' to set '{target_set}'")
 
 
-# ----------------- 'sets' command group -----------------
-@cli.group()
-@click.pass_context
-def sets(ctx):
-    """Manage sets that have already been created"""
-    pass
-
-
-@sets.command("delete")
-@click.argument("set_name", metavar="<NAME>")
-@click.pass_context
-def set_delete(ctx, set_name):
-    """Delete a set"""
-    conn = ctx.obj["conn"]
-    try:
-        if click.confirm(
-            f"Are you sure you want to delete the set '{set_name}'?", default=False
-        ):
-            conn.execute("DELETE FROM sets WHERE set_name = ?", (set_name,))
-            conn.commit()
-            click.echo(f"Deleted the `{set_name}` set.")
-    except Exception as e:
-        raise click.ClickException(str(e))
-
-
-@sets.command("list")
+# ----------------- 'list' command -----------------
+@cli.group(invoke_without_command=True)
 @click.option(
-    "--desc",
+    "--describe",
     "-d",
     is_flag=True,  # boolean flag
-    help="Optionally output the descriptions for the set",
+    default=False,
+    help="Optionally show the keys for each set",
 )
 @click.pass_context
-def set_list(ctx, desc):
-    """List all sets"""
+def list(ctx, describe):
+    """List the available sets (or keys within sets)"""
+    
+    if ctx.invoked_subcommand is not None:
+        return
+
     conn = ctx.obj["conn"]
 
     # Fetch description only if requested
-    if desc:
+    if describe:
         rows = conn.execute(
             "SELECT set_name, is_active, description FROM sets ORDER BY set_name"
         ).fetchall()
@@ -205,18 +201,18 @@ def set_list(ctx, desc):
         color = "green" if is_active else "yellow"
         text = click.style(f"{name}", fg=color)
 
-        if desc:
+        if describe:
             description = row[2] or "(no description)"
             click.echo(f"{text} – {description}")
         else:
             click.echo(text)
 
 
-@sets.command("info")
-@click.argument("set_name", metavar="<NAME>")
+@list.command("entries")
+@click.argument("set_name", metavar="<SET_NAME>")
 @click.pass_context
-def set_info(ctx, set_name):
-    """List all info for a set"""
+def list_entries(ctx, set_name):
+    """List entries for a set"""
     conn = ctx.obj["conn"]
     set_row = conn.execute(
         "SELECT description FROM sets WHERE set_name=?", (set_name,)
