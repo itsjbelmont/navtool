@@ -9,7 +9,7 @@ DEFAULT_DB_PATH = "~/.navtool.db"
 @click.pass_context
 def cli(ctx):
     """
-    nav – navigate directories by associating short keys to commonly accessed directory paths. Keys can be organized into sets to support switching between projects.
+    Navigate directories by associating short keys to commonly accessed directory paths. Keys can be organized into sets to support switching between projects.
     """
     db_path = str(Path(DEFAULT_DB_PATH).expanduser())
     ctx.ensure_object(dict)
@@ -21,6 +21,7 @@ def cli(ctx):
 @click.argument("key_name", metavar="<KEY_NAME>")
 @click.pass_context
 def get_path(ctx, key_name):
+    """Check the active sets for a given key and return its path"""
     conn = ctx.obj["conn"]
     try:
       rows = conn.execute(
