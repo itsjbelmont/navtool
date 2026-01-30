@@ -1,6 +1,6 @@
 # NavTool
 
-NavTool is a key/value command line utility for efficiently navigating between commonly accessed (pre-known) directory paths by assigning these directories to short "keys".
+NavTool is a Python CLI that makes `cd` faster by letting you map short keys to directories, then jump with `nav <key>`. It also supports "nav sets" so you can group keys per project, load/unload sets, and handle duplicate keys across projects. It installs via `pipx` and relies on a shell script (`shell/nav.sh`) to hook the `nav` command into your shell.
 
 ```sh
 $ nav mydir # nav to the directory linked by key "mydir"
