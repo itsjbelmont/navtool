@@ -53,6 +53,25 @@ The dev and production builds use separate database files, selected automaticall
 Run `navtool db info` to see which database is active and why. Tests use `$NAVTOOL_DB` to point at
 a throwaway file, so they never touch your real data.
 
+### Schema versioning and migrations
+
+The database schema is versioned with SQLite's `PRAGMA user_version`, tracked separately from the
+app version (`pyproject.toml`). The current target is `SCHEMA_VERSION` in
+[../src/navtool/db.py](../src/navtool/db.py). When navtool opens a database that is behind, it
+writes a timestamped `*.pre-migrate-*` backup next to the file and then applies the pending
+migrations in order. A database created by a newer navtool is refused.
+
+Migration 1 is the baseline: it applies `schema.sql` (idempotent), which both initializes a fresh
+database and adopts any pre-versioning one.
+
+**Adding a schema migration:**
+
+1. Bump `SCHEMA_VERSION` in `db.py`.
+2. Add a `_migration_N(conn)` function and register it in the `MIGRATIONS` dict under version `N`.
+   Use `conn.execute(...)` statements (the runner wraps migrations 2+ in a transaction).
+3. Update `resources/schema.sql` so a *fresh* install produces the same final schema.
+4. Add a test in `tests/test_migrations.py` (fresh apply + upgrade-from-previous-version).
+
 ## Running Tests
 
 With the venv active and `[dev]` dependencies installed:

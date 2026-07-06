@@ -179,6 +179,30 @@ def test_db_info_reports_override_and_counts(run, tmp_path):
     assert "Entries:  1" in result.output
 
 
+def test_db_info_reports_schema_version(run):
+    from navtool.db import SCHEMA_VERSION
+
+    result = run("db", "info")
+    assert result.exit_code == 0
+    assert f"version {SCHEMA_VERSION} (up to date)" in result.output
+    assert "NavTool:" in result.output
+
+
+def test_db_migrate_reports_up_to_date(run):
+    # The DB is created (and migrated) on the first command, so a later explicit
+    # migrate reports it is already current.
+    run("db", "info")
+    result = run("db", "migrate")
+    assert result.exit_code == 0
+    assert "already up to date" in result.output
+
+
+def test_version_flag(run):
+    result = run("--version")
+    assert result.exit_code == 0
+    assert "navtool" in result.output.lower()
+
+
 # ----------------- path resolution -----------------
 def test_path_default_and_qualified(run, tmp_path):
     run("set", "add", "proj")

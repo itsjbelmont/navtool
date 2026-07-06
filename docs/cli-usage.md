@@ -62,7 +62,18 @@ both.
 | Command | Description |
 |---|---|
 | `nav db path` | Print the path of the database file in use. |
-| `nav db info` | Show the path, why it was chosen (dev/prod/override), its size, and set/entry counts. |
+| `nav db info` | Show the path, why it was chosen (dev/prod/override), size, schema/app version, and set/entry counts. |
+| `nav db migrate` | Apply any pending schema migrations and report the result. Migrations also run automatically on connect, so this is mainly an explicit control point. |
+
+The database is versioned with SQLite's `PRAGMA user_version`. When navtool opens a database that
+is behind the current schema, it first writes a timestamped `*.pre-migrate-*` backup next to the
+file, then applies the pending migrations. A database created by a *newer* navtool than the one
+you're running is refused with a clear error.
+
+## `nav --version`
+
+`nav --version` prints the installed navtool version. (Set/keyword/database data is unaffected by
+version; the two are tracked separately — see [dev-quickstart.md](dev-quickstart.md).)
 
 ## `nav path` — resolve a keyword
 
@@ -174,6 +185,8 @@ $ nav db info
 Database: /Users/me/.navtool.db
 Source:   prod build (installed)
 Size:     20.0 KB
+Schema:   version 1 (up to date)
+NavTool:  0.1.0
 Sets:     3
 Entries:  4
 ```

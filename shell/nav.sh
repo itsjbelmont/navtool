@@ -1,7 +1,7 @@
 nav() {
-  # No args or help → pass straight through to navtool.
+  # No args, help, or version → pass straight through to navtool.
   case "$1" in
-    ""|-h|--help)
+    ""|-h|--help|--version)
       navtool "$@"
       return
       ;;

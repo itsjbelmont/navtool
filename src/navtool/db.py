@@ -1,81 +1,143 @@
+import shutil
 import sqlite3
+from datetime import datetime
 from pathlib import Path
 
-# Path to schema.sql
+# Path to schema.sql (the baseline schema applied by migration 1).
 SCHEMA_PATH = Path(__file__).parent / "resources" / "schema.sql"
 
 # The always-present set that unqualified keywords resolve against.
 DEFAULT_SET = "default"
 
+# Current target schema version. Bump this (and add a migration below) whenever
+# the schema changes. Stored in each database via `PRAGMA user_version`.
+SCHEMA_VERSION = 1
+
+# In-memory databases use this sentinel path and are never backed up.
+MEMORY_DB = ":memory:"
+
+
+class NewerDatabaseError(RuntimeError):
+    """Raised when a database was created by a newer navtool than this one."""
+
 
 def create_connection(db_path: str) -> sqlite3.Connection:
     """
     Create a SQLite connection with foreign keys enabled.
-    Does NOT actually initialize the schema.
+    Does NOT run migrations. `PRAGMA foreign_keys` is set here, before any
+    transaction, because it is a no-op inside one.
     """
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 
-def schema_initialized(conn: sqlite3.Connection) -> bool:
-    """
-    Return True if the database schema has already been initialized.
-    We check for a known table instead of checking filesystem state
-    so this works for both file-based and :memory: databases.
-    """
-    row = conn.execute("""
-        SELECT name
-        FROM sqlite_master
-        WHERE type='table' AND name='sets';
-        """).fetchone()
-    return row is not None
+def _get_user_version(conn: sqlite3.Connection) -> int:
+    return conn.execute("PRAGMA user_version").fetchone()[0]
 
 
-def initialize_schema(conn: sqlite3.Connection) -> None:
+def _set_user_version(conn: sqlite3.Connection, version: int) -> None:
+    # PRAGMA does not accept bound parameters, so interpolate a validated int.
+    conn.execute(f"PRAGMA user_version = {int(version)}")
+
+
+# ----------------- Migrations -----------------
+# Each migration upgrades a database from version N-1 to N. Register it under
+# its target version in MIGRATIONS. Keep them ordered and never renumber a
+# migration that has shipped.
+
+
+def _migration_1(conn: sqlite3.Connection) -> None:
     """
-    Apply the schema.sql file to the database.
-    Safe to call only when schema is not already present.
+    Baseline schema (v0 -> v1).
+
+    Applies schema.sql, which creates the `sets` and `entries` tables and seeds
+    the `default` set. Every statement is idempotent (`CREATE TABLE IF NOT
+    EXISTS`, `INSERT OR IGNORE`), so this both initializes a fresh database and
+    adopts a pre-versioning database without altering its data.
     """
     with open(SCHEMA_PATH, "r") as f:
         conn.executescript(f.read())
-    conn.commit()
 
 
-def initialize_schema_if_needed(conn: sqlite3.Connection) -> None:
+MIGRATIONS = {
+    1: _migration_1,
+}
+
+
+def _has_tables(conn: sqlite3.Connection) -> bool:
+    """True if the database already contains user tables (i.e. prior data)."""
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
+    ).fetchone()
+    return row is not None
+
+
+def _backup_path(db_path: str, from_version: int) -> Path:
+    timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
+    return Path(f"{db_path}.pre-migrate-v{from_version}-{timestamp}")
+
+
+def migrate(conn: sqlite3.Connection, db_path: str) -> tuple[int, int]:
     """
-    Initialize the schema only if it has not already been applied.
-    """
-    if not schema_initialized(conn):
-        initialize_schema(conn)
+    Bring `conn` up to SCHEMA_VERSION, running any pending migrations in order.
 
+    Returns ``(from_version, to_version)`` describing what happened (equal when
+    already up to date).
 
-def ensure_default_set(conn: sqlite3.Connection) -> None:
-    """
-    Guarantee that the `default` set exists.
+    For file-based databases that are behind, the file is copied to a
+    timestamped ``*.pre-migrate-*`` backup before any migration runs, so a
+    failed or unexpected migration can always be rolled back by hand.
 
-    Run on every connection (not just fresh ones) so that databases created
-    before the `default` set was introduced still get it.
+    Raises :class:`NewerDatabaseError` if the database is ahead of this build.
     """
-    conn.execute(
-        "INSERT OR IGNORE INTO sets (set_name, description) VALUES (?, NULL)",
-        (DEFAULT_SET,),
-    )
-    conn.commit()
+    from_version = _get_user_version(conn)
+
+    if from_version > SCHEMA_VERSION:
+        raise NewerDatabaseError(
+            f"Database schema version {from_version} is newer than this navtool "
+            f"supports (version {SCHEMA_VERSION}). Update navtool to continue."
+        )
+    if from_version == SCHEMA_VERSION:
+        return (from_version, from_version)
+
+    # Behind: back up file-based databases that already hold data before
+    # touching them. A fresh/empty file has no tables and nothing to lose.
+    if db_path != MEMORY_DB and Path(db_path).exists() and _has_tables(conn):
+        shutil.copy2(db_path, _backup_path(db_path, from_version))
+
+    for target in range(from_version + 1, SCHEMA_VERSION + 1):
+        migration = MIGRATIONS[target]
+        # Migration 1 uses executescript() (which self-commits) and is
+        # idempotent; stamp the version immediately after. Later migrations run
+        # inside an explicit transaction so the change and the version bump
+        # commit atomically.
+        if target == 1:
+            migration(conn)
+            _set_user_version(conn, target)
+            conn.commit()
+        else:
+            try:
+                conn.execute("BEGIN")
+                migration(conn)
+                _set_user_version(conn, target)
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+
+    return (from_version, SCHEMA_VERSION)
 
 
 def get_connection(db_path: str) -> sqlite3.Connection:
     """
     Public entry point.
 
-    Returns a SQLite connection and guarantees that the schema has been
-    initialized and that the `default` set exists.
+    Returns a SQLite connection, migrated up to SCHEMA_VERSION (which also
+    initializes a fresh database and guarantees the `default` set exists).
 
-    Works for:
-      - file-based databases
-      - ':memory:' databases (used in tests)
+    Works for file-based databases and ':memory:' databases (used in tests).
     """
     conn = create_connection(db_path)
-    initialize_schema_if_needed(conn)
-    ensure_default_set(conn)
+    migrate(conn, db_path)
     return conn

@@ -2,7 +2,15 @@ import os
 import click
 from pathlib import Path
 
-from navtool.db import get_connection, DEFAULT_SET
+from navtool import __version__
+from navtool.db import (
+    create_connection,
+    migrate,
+    NewerDatabaseError,
+    DEFAULT_SET,
+    SCHEMA_VERSION,
+    _get_user_version,
+)
 
 # The production database, used by installed (pipx) builds.
 PROD_DB_PATH = "~/.navtool.db"
@@ -72,6 +80,7 @@ def _resolve_directory(directory: str) -> str:
 
 # ----------------- Top-level CLI -----------------
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
+@click.version_option(package_name="navtool", prog_name="navtool")
 @click.pass_context
 def cli(ctx):
     """
@@ -80,7 +89,14 @@ def cli(ctx):
     between projects.
     """
     ctx.ensure_object(dict)
-    ctx.obj["conn"] = get_connection(resolve_db_path())
+    path = resolve_db_path()
+    conn = create_connection(path)
+    try:
+        # Returns (from_version, to_version); records what this run migrated.
+        ctx.obj["migration"] = migrate(conn, path)
+    except NewerDatabaseError as e:
+        raise click.ClickException(str(e))
+    ctx.obj["conn"] = conn
 
 
 # ----------------- `path` command (shell plumbing) -----------------
@@ -141,12 +157,39 @@ def db_info(ctx):
     entry_count = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
     size = _format_size(Path(path).stat().st_size) if Path(path).exists() else "0 B"
 
+    db_version = _get_user_version(conn)
+    if db_version == SCHEMA_VERSION:
+        schema = f"version {db_version} (up to date)"
+    else:
+        schema = f"version {db_version} -> {SCHEMA_VERSION} pending"
+
     label = click.style(path, fg="cyan")
     click.echo(f"Database: {label}")
     click.echo(f"Source:   {source}")
     click.echo(f"Size:     {size}")
+    click.echo(f"Schema:   {schema}")
+    click.echo(f"NavTool:  {__version__}")
     click.echo(f"Sets:     {set_count}")
     click.echo(f"Entries:  {entry_count}")
+
+
+@db_group.command("migrate")
+@click.pass_context
+def db_migrate(ctx):
+    """Apply any pending schema migrations to the database.
+
+    Migrations also run automatically whenever navtool opens the database, so
+    this is mainly an explicit, transparent way to trigger and report them.
+    """
+    # The top-level group already migrated the database on connect; report what
+    # that did on this run.
+    from_version, to_version = ctx.obj["migration"]
+    if from_version == to_version:
+        click.echo(f"Database already up to date (schema version {to_version}).")
+    else:
+        click.echo(
+            f"Migrated database from schema version {from_version} to {to_version}."
+        )
 
 
 # ================= `set` command group =================
