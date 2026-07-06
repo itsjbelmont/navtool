@@ -26,6 +26,16 @@ DIRS_SENTINEL = "\x1f__navtool_dirs__"
 FILES_SENTINEL = "\x1f__navtool_files__"
 
 
+def _looks_like_path(word: str) -> bool:
+    """True if ``word`` is a filesystem path rather than a name/command.
+
+    `nav <path>` falls through to `cd`, so the first word can be a directory. A
+    leading `~`/`/`/`.` or any `/` marks it as a path (names have no slashes and
+    nest with `:`), which lets us offer `cd`-style directory completion for it.
+    """
+    return word.startswith(("~", "/", ".")) or "/" in word
+
+
 @click.command(
     "__complete",
     hidden=True,
@@ -56,6 +66,11 @@ def complete(ctx, nav_wrapper, words):
     # `nav <name>` navigates, so the first word is also a name target. (For
     # plain `navtool` there is no bare navigation, hence the --nav gate.)
     if nav_wrapper and not args:
+        # A path-like first word means `nav` will fall through to `cd`; defer to
+        # the shell for `cd`-style directory completion (e.g. `nav ~/Down<TAB>`).
+        if _looks_like_path(incomplete):
+            click.echo(DIRS_SENTINEL)
+            return
         items += _name_completion_items(ctx.obj["conn"], incomplete)
 
     # A filesystem argument can't be enumerated here; defer to the shell.

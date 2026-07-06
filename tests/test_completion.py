@@ -122,3 +122,18 @@ def test_completion_after_subcommand_routes_to_names(run, tree):
 def test_directory_argument_emits_sentinel(run, tree):
     lines = _lines(run("__complete", "--", "add", "newname", "/tm"))
     assert lines == [DIRS_SENTINEL]
+
+
+@pytest.mark.parametrize("word", ["~/Down", "/etc/", "./s", "../", "~", "a/b"])
+def test_nav_path_like_first_word_defers_to_dir_completion(run, tree, word):
+    # `nav <path>` falls through to `cd`, so a path-like first word should get
+    # `cd`-style directory completion from the shell (e.g. `nav ~/Down<TAB>`).
+    lines = _lines(run("__complete", "--nav", "--", word))
+    assert lines == [DIRS_SENTINEL]
+
+
+def test_nav_bare_name_word_is_not_treated_as_path(run, tree):
+    # A name (no slash) must still complete as a name, not trigger dir completion.
+    lines = _lines(run("__complete", "--nav", "--", "my"))
+    assert DIRS_SENTINEL not in lines
+    assert "myproj" in lines
