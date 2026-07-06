@@ -1,5 +1,5 @@
 nav() {
-  # Pass through help and flags immediately
+  # No args or help → pass straight through to navtool.
   case "$1" in
     ""|-h|--help)
       navtool "$@"
@@ -7,24 +7,33 @@ nav() {
       ;;
   esac
 
+  # Discover navtool's top-level subcommands (set, key, path, ...).
+  local cmds
   cmds=$(navtool --help | awk '
     /Commands:/ {f=1; next}
     f && /^[[:space:]]{2}[a-z]/ {print $1}
   ')
 
-  # Known command → pass through
+  # Known subcommand → pass through to navtool.
   if echo "$cmds" | grep -qx "$1"; then
     navtool "$@"
     return
   fi
 
-  # Single non-command argument → treat as key
+  # Single non-command argument → treat it as a keyword to navigate to.
+  # `navtool path` accepts both `keyword` and `set:keyword` forms and exits
+  # non-zero when nothing matches, in which case we fall back to a plain `cd`
+  # so `nav <path>` still behaves like `cd <path>`.
   if [ $# -eq 1 ]; then
-    target=$(navtool path "$1") || return
-    cd "$target" || return
+    local target
+    if target=$(navtool path "$1" 2>/dev/null); then
+      cd "$target" || return
+    else
+      cd "$1"
+    fi
     return
   fi
 
-  # Fallback
+  # Anything else → pass through to navtool.
   navtool "$@"
 }

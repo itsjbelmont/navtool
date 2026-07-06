@@ -2,8 +2,7 @@ PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS sets (
   set_name TEXT PRIMARY KEY,
-  description TEXT,
-  is_active INTEGER NOT NULL DEFAULT 0 CHECK (is_active IN (0, 1))
+  description TEXT
 );
 
 CREATE TABLE IF NOT EXISTS entries (
@@ -14,5 +13,8 @@ CREATE TABLE IF NOT EXISTS entries (
   FOREIGN KEY (set_name)
     REFERENCES sets(set_name)
     ON DELETE CASCADE
-    
+    ON UPDATE CASCADE
 );
+
+-- The `default` set is always present and is the target for unqualified keywords.
+INSERT OR IGNORE INTO sets (set_name, description) VALUES ('default', NULL);

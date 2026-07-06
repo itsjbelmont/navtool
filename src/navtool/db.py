@@ -4,6 +4,9 @@ from pathlib import Path
 # Path to schema.sql
 SCHEMA_PATH = Path(__file__).parent / "resources" / "schema.sql"
 
+# The always-present set that unqualified keywords resolve against.
+DEFAULT_SET = "default"
+
 
 def create_connection(db_path: str) -> sqlite3.Connection:
     """
@@ -47,12 +50,26 @@ def initialize_schema_if_needed(conn: sqlite3.Connection) -> None:
         initialize_schema(conn)
 
 
+def ensure_default_set(conn: sqlite3.Connection) -> None:
+    """
+    Guarantee that the `default` set exists.
+
+    Run on every connection (not just fresh ones) so that databases created
+    before the `default` set was introduced still get it.
+    """
+    conn.execute(
+        "INSERT OR IGNORE INTO sets (set_name, description) VALUES (?, NULL)",
+        (DEFAULT_SET,),
+    )
+    conn.commit()
+
+
 def get_connection(db_path: str) -> sqlite3.Connection:
     """
     Public entry point.
 
-    Returns a SQLite connection and guarantees that the schema
-    has been initialized.
+    Returns a SQLite connection and guarantees that the schema has been
+    initialized and that the `default` set exists.
 
     Works for:
       - file-based databases
@@ -60,4 +77,5 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     """
     conn = create_connection(db_path)
     initialize_schema_if_needed(conn)
+    ensure_default_set(conn)
     return conn

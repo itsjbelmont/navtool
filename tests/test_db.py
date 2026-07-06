@@ -16,6 +16,14 @@ def db():
     conn.close()
 
 
+def test_default_set_seeded(db):
+    """A fresh database always has the `default` set."""
+    row = db.execute(
+        "SELECT set_name FROM sets WHERE set_name = ?", ("default",)
+    ).fetchone()
+    assert row == ("default",)
+
+
 def test_insert_set_with_description(db):
     db.execute(
         "INSERT INTO sets (set_name, description) VALUES (?, ?)",
@@ -23,11 +31,11 @@ def test_insert_set_with_description(db):
     )
 
     row = db.execute(
-        "SELECT set_name, description, is_active FROM sets WHERE set_name = ?",
+        "SELECT set_name, description FROM sets WHERE set_name = ?",
         ("projects",),
     ).fetchone()
 
-    assert row == ("projects", "Work-related directories", 0)
+    assert row == ("projects", "Work-related directories")
 
 
 def test_insert_set_without_description(db):
@@ -42,41 +50,21 @@ def test_insert_set_without_description(db):
     ).fetchone()
 
     assert row[0] is None
-  
 
-def test_insert_active_set(db):
+
+def test_rename_set_cascades_to_entries(db):
+    """ON UPDATE CASCADE moves entries when a set is renamed."""
+    db.execute("INSERT INTO sets (set_name) VALUES (?)", ("proj",))
     db.execute(
-        "INSERT INTO sets (set_name, is_active) VALUES (?, ?)",
-        ("active_set", 1)
+        "INSERT INTO entries VALUES (?, ?, ?)", ("proj", "a", "/path/a")
     )
 
-    row = db.execute(
-        "SELECT is_active FROM sets WHERE set_name = ?",
-        ("active_set",),
-    ).fetchone()
+    db.execute("UPDATE sets SET set_name = ? WHERE set_name = ?", ("nt", "proj"))
 
-    assert row[0] == 1
-
-
-def test_insert_set_then_activate(db):
-    db.execute(
-        "INSERT INTO sets (set_name) VALUES (?)",
-        ("test_activation",),
-    )
-    row = db.execute(
-        "SELECT is_active FROM sets WHERE set_name = ?",
-        ("test_activation",),
-    ).fetchone()
-    assert row[0] == 0
-    db.execute(
-        "UPDATE sets SET is_active = ? WHERE set_name = ?",
-        (1, "test_activation")
-    ) 
-    row = db.execute(
-        "SELECT is_active FROM sets WHERE set_name = ?",
-        ("test_activation",),
-    ).fetchone()
-    assert row[0] == 1
+    rows = db.execute(
+        "SELECT set_name, entry_value FROM entries WHERE entry_key = ?", ("a",)
+    ).fetchall()
+    assert rows == [("nt", "/path/a")]
 
 
 def test_insert_entry(db):

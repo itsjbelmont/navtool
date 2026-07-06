@@ -1,7 +1,13 @@
 # NavTool
 
-NavTool is a Python CLI that makes `cd` faster by letting you map short keys to directories, then jump with `nav <key>`. It also supports "nav sets" so you can group keys per project, load/unload sets, and handle duplicate keys across projects. It installs via `pipx` and relies on a shell script (`shell/nav.sh`) to hook the `nav` command into your shell.
+NavTool is a CLI that extends the functionality of `cd` by letting you map directory locations to key words, then rapidly jump to keyed directories at any time with the `nav <keyword>` command. 
 
+- Map directory locations to short keywords
+- Organize mapped directories into project specific sets
+
+This project installs via `pipx` and utilizes on a simple shell script (`shell/nav.sh`) to hook the `nav` command into your shell.
+
+**Basic usage:**
 ```sh
 $ nav mydir # nav to the directory linked by key "mydir"
 ```
