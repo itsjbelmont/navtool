@@ -1,11 +1,20 @@
-# NavTool / Tests
+# NavTool Tests
 
-This directory contains the tests for NavTool.
+This directory contains NavTool's test suite:
 
-To run:
+- `test_db.py` — database schema and behavior (default set seeding, constraints, cascades).
+- `test_cli.py` — command-level tests that invoke the CLI against a throwaway database.
 
-1. Ensure your venv is active (`source .venv/bin/activate`)
+The CLI tests set `$NAVTOOL_DB` to a temporary file, so running them never touches your real
+NavTool data.
 
-1. Install the project in editable mode with dev dependencies: `pip install -e ".[dev]"`
+## Running
 
-1. From the `navtool/` repo root directory run `pytest` to auto find and run the test_*.py files.
+From the repository root, with the virtual environment active and dev dependencies installed
+(see [../docs/dev-quickstart.md](../docs/dev-quickstart.md)):
+
+```sh
+pytest
+```
+
+`pytest` discovers and runs every `test_*.py` file in this directory.

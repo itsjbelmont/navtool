@@ -1,42 +1,71 @@
 # Development Quickstart
 
-This project uses python for the underlying control utility.
+NavTool's CLI is a Python package (`src/navtool/`) built with Click. This guide covers running it
+from a local editable install.
 
-From the `navtool/` root directory: `source .venv/bin/activate`
+Prerequisites: Python 3.10+ and a clone of this repository. All commands assume your working
+directory is the repository root.
 
-**NOTES:** 
+## Setup
 
-* _This guide assumes your CWD is the root directory of the navtool repository_
-* You must have python3 installed on your system
+1. Create a virtual environment:
 
-## Get Started With The Dev Env
+   ```sh
+   python3 -m venv .venv
+   ```
 
-_**NOTE:**_ The dev and production builds use **separate** database files, chosen automatically:
+2. Activate it:
 
-* A dev (editable) build run from this checkout uses `<repo>/.navtool.dev.db` (gitignored).
-* An installed (pipx) build uses `~/.navtool.db`.
-* Set `NAVTOOL_DB=/path/to/some.db` to override either one explicitly (e.g. for experiments or tests).
+   ```sh
+   source .venv/bin/activate
+   ```
 
-1. Create the `.venv/` virtual env folder: `python3 -m venv .venv`
+   Your prompt is now prefixed with `(.venv)`, and `which python3` / `which pip` point into
+   `.venv/bin/`.
 
-1. Activate the virtual env: `source .venv/bin/activate`
+3. Install NavTool in editable mode with dev dependencies:
 
-    * Your shell prompt should now be pre-pended with a `(.venv)` prefix.
+   ```sh
+   pip install -e ".[dev]"
+   ```
 
-    * Validate that python3 now calls into the `.venv/`'s python version: `which python3` -> `<NAVTOOL>/navtool/.venv/bin/python3`
+   Editable mode means source edits under `src/navtool/` take effect immediately — no reinstall
+   needed unless dependencies or `pyproject.toml` change. The `[dev]` extra adds `pytest`,
+   `black`, and `isort`.
 
-    * Validate that pip now calls into the `.venv/`'s python version: `which pip` -> `<NAVTOOL>/navtool/.venv/bin/pip`
+4. Confirm the dev build is the one on `PATH`:
 
-1. Update your virtual python's pip version: `pip install --upgrade pip`
+   ```sh
+   which navtool     # -> <repo>/.venv/bin/navtool
+   ```
 
-1. Install navtool in development mode (so the tool updates when the source code updates), and include the development dependencies: `pip install -e ".[dev]"`
+   If `which navtool` points elsewhere (e.g. `~/.local/bin/navtool`), an installed build is
+   shadowing the dev one. Run `pipx uninstall navtool` to remove it.
 
-    * If you dont want to use formatting tools or run unit tests you may be able to just run `pip install -e .` without the development dependencies.
+## Databases
 
-1. Validate that navtool is installed in the `.venv`: `which navtool` -> `<NAVTOOL>/navtool/.venv/bin/navtool`
+The dev and production builds use separate database files, selected automatically:
 
-    * **Important:** If you have already installed system wide via `pipx install .` you may need to run `pipx uninstall navtool` to uninstall so that you running navtool does not clash between installed stable/dev versions. Running `which navtool` should validate that you are using navtool out of the dev environment. If `which navtool` points to something other than `.venv/bin/navtool` then you will need to uninstall via `pipx uninstall navtool`
+- Dev (editable) build run from this checkout → `<repo>/.navtool.dev.db` (gitignored)
+- Installed (pipx) build → `~/.navtool.db`
+- `$NAVTOOL_DB=/path/to/some.db` overrides either one
 
-    * **IMPORTANT:** If `which navtool` points to something other than `<NAVTOOL>/.venv/bin/navtool` it is likely because you have already installed navtool to your system via `pipx install .`. In this situation any calls to `navtool` will NOT find your dev changes. Before starting development run `pipx uninstall navtool` to uninstall the system version and then re-install the system version after finishing development.
+Run `navtool db info` to see which database is active and why. Tests use `$NAVTOOL_DB` to point at
+a throwaway file, so they never touch your real data.
 
-1. As long as you installed the `[dev]` dependencies then you can validate behavior by running the unit tests: `pytest`
+## Running Tests
+
+With the venv active and `[dev]` dependencies installed:
+
+```sh
+pytest
+```
+
+`pytest` discovers and runs the `tests/test_*.py` files. See [../tests/README.md](../tests/README.md).
+
+## Formatting
+
+```sh
+black src tests
+isort src tests
+```

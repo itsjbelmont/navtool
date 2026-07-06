@@ -1,215 +1,112 @@
 # NavTool
 
-NavTool is a CLI that extends the functionality of `cd` by letting you map directory locations to key words, then rapidly jump to keyed directories at any time with the `nav <keyword>` command. 
-
-- Map directory locations to short keywords
-- Organize mapped directories into project specific sets
-
-This project installs via `pipx` and utilizes on a simple shell script (`shell/nav.sh`) to hook the `nav` command into your shell.
-
-**Basic usage:**
-```sh
-$ nav mydir # nav to the directory linked by key "mydir"
-```
-
-## System Requirements
-
-* `Python3`
-* `pipx`
-
-## Get Started
-
-1. Ensure `python3` and `pipx` are installed on your system.
-
-1. Clone the repository: `git clone https://github.com/itsjbelmont/navtool.git`
-
-1. Install navtool with pipx (from the project root dir): `pipx install .`
-
-1. TODO: Run setup script for your shell
-
-    * For now: simply open your shell's rc file (such as `~/.zshrc`) and source the `<NAVTOOL>/shell/nav.sh` script
-
-1. Restart terminals
-
-1. Validate navtool:
-    ```sh
-    # Validate that the navtool utility is installed and accessible
-    $ which navtool
-    /Users/<USER>/.local/bin/navtool
-
-    # Print the navtool help menu to ensure the tools entry point is working
-    $ nav -h
-    ```
-
-**Note:** To uninstall: `pipx uninstall navtool`
-
-
-## NavTool Overview
-
-NavTool allows you to save key/directory pairs for commonly accessed directories and easily navigate to these directories via their key.
-The utility is run via the `nav` command.
-
-In the simplest form, a NavTool workflow looks like this:
+NavTool is a command-line tool that extends `cd`. You map short keywords to directories, then
+jump to them from anywhere with `nav <keyword>`. Keywords are organized into **sets** so you can
+keep per-project shortcuts separate.
 
 ```sh
-$ cd /my/path/to/project-root
-$ nav --save proj . # Save the CWD into the `proj` key
-$ cd /some/other/path
-$ nav proj # Navigate to the saved directory via the `proj` key
-cwd: /my/path/to/project-root
+$ nav proj      # cd to the directory registered under the keyword "proj"
 ```
 
-The `nav` command is fundamentally a `cd` call under the hood.
-If the tool can not find the specified key, it will pass the input directly to `cd`:
+NavTool has two parts:
+
+- **`navtool`** — a Python CLI (built with [Click](https://click.palletsprojects.com/)) that
+  stores keyword/directory mappings in a SQLite database.
+- **`nav`** — a shell function ([shell/nav.sh](shell/nav.sh)) that wraps `navtool`. It runs the
+  actual `cd`, since a subprocess can't change its parent shell's directory.
+
+## Requirements
+
+- Python 3.10+
+- [pipx](https://pipx.pypa.io/) (for installing the CLI)
+
+## Install
+
+1. Clone the repository:
+
+   ```sh
+   git clone https://github.com/itsjbelmont/navtool.git
+   cd navtool
+   ```
+
+2. Install the CLI with pipx:
+
+   ```sh
+   pipx install .
+   ```
+
+3. Hook the `nav` function into your shell by sourcing [shell/nav.sh](shell/nav.sh) from your
+   shell's startup file (e.g. `~/.zshrc` or `~/.bashrc`):
+
+   ```sh
+   source /path/to/navtool/shell/nav.sh
+   ```
+
+4. Restart your terminals (or re-source your startup file).
+
+5. Verify:
+
+   ```sh
+   which navtool     # -> ~/.local/bin/navtool
+   nav -h            # prints the help menu
+   ```
+
+To uninstall the CLI: `pipx uninstall navtool`.
+
+## How It Works
+
+### Keywords and the `default` set
+
+A **keyword** maps a short name to a directory. Keywords live in **sets**. The `default` set
+always exists and is what unqualified keywords resolve against:
 
 ```sh
-$ ls .
-dir1    dir2    dir3
-$ nav dir1 # use the nav command as a drop-in replacement for cd
-cwd: /full/path/to/dir1
+$ nav key add proj ~/Projects/navtool   # registers "proj" in the default set
+$ nav proj                              # cd to ~/Projects/navtool
 ```
 
-When working on multiple projects you can associate a set of keys with each project via "nav sets."
-This allows you to automatically load/unload the keys for a given set when working on each of your individual projects.
-This aims to solve two primary use cases:
+### Project sets and qualified keywords
 
-1. Avoids key pollution by using a key only when working on the specific project that needs it
-1. Allows using the same key for multiple projects (such as using the `build` key to access a project's build artifacts)
+Any set other than `default` is addressed with a `set:keyword` qualifier. There is no "active
+set" state — a set's keywords are reachable by qualifier as soon as they exist:
 
 ```sh
-# List the keys currently in use
-$ nav --keys
-No keys available
-
-# List the available sets
-$ nav --sets
-default
-proj1
-proj2
-
-# Load one of the project sets
-$ nav --load proj1
-
-# List the keys currently in use
-$ nav --keys
-proj1:proj    -> /path/to/proj
-proj1:build   -> /path/to/proj/build/release
-proj1:logs    -> /path/to/installed_application/proj1/logs
-
-# Navigate to a key
-$ nav build 
-cwd: /path/to/proj/build/release
+$ nav set add work
+$ nav key add api ~/code/api --set work
+$ nav work:api                          # cd to ~/code/api
 ```
 
-When using multiple loaded NavSets simultaneously you can specify unique keys without a set-specifier.
-If duplicate keys exist you can specify which project's key to use by including its prefix.
-If no set is specified and you try to navigate to a duplicate key you will be prompted to select which set's key should be used.
+Because each non-`default` set is only reached through its own qualifier, the same keyword name
+can be reused across sets without collision (`work:api`, `personal:api`, etc.).
+
+### Falling through to `cd`
+
+If an argument doesn't resolve to a registered keyword, `nav` passes it straight to `cd`, so it
+works as a drop-in replacement:
 
 ```sh
-# Load multiple projects containing duplicate keys
-$ nav --load proj1
-$ nav --load proj2
-$ nav --keys
-proj1:proj    -> /path/to/proj1
-proj1:build   -> /path/to/proj1/build/release
-proj1:logs    -> /path/to/installed_application/proj1/logs
-
-proj2:proj    -> /path/to/proj2
-proj2:output  -> /path/to/proj2/output/dir
-
-# Navigate to a key that is unique (no duplicates)
-$ nav output
-cwd: /path/to/proj2/output/dir
-
-# Navigate to a key from a specific project (nav <set>:<key>)
-$ nav proj1:proj
-cwd: /path/to/proj1
-
-# Navigate to a key with duplicate entries without specifying the set
-$ nav proj
-Select from duplicate <proj> keys:
-1. proj1:proj
-2. proj2:proj
-> proj1
-cwd: /path/to/proj1
+$ nav ~/Downloads                       # not a keyword -> behaves like `cd ~/Downloads`
 ```
 
-## Get Started
+## Command Summary
 
-1. Pick a directory on your PC where the tool can live and `cd` to that location
+| Command | Purpose |
+|---|---|
+| `nav <keyword>` / `nav <set>:<keyword>` | Navigate to a registered directory. |
+| `nav set list` / `show` / `add` / `remove` / `update` | Manage sets. |
+| `nav key list` / `add` / `remove` / `update` / `move` | Manage keyword entries. |
+| `nav db path` / `info` | Inspect the database file in use. |
+| `nav path <keyword>` | Resolve a keyword to its path (used internally by `nav`). |
 
-1. Clone the repository: `git clone https://github.com/itsjbelmont/navtool.git`
+See [docs/cli-usage.md](docs/cli-usage.md) for the full command reference and examples.
 
-1. **TODO:** Bootstrap the shell entry point (and restart terminals?)
+## Data Storage
 
-1. Validate installation: `nav --version`
+Keywords and sets are stored in a single SQLite file. The location is chosen automatically:
 
-1. See navtool help menu: `nav -h` or `nav --help`
+- Installed (pipx) build → `~/.navtool.db`
+- Dev/editable build run from the repo → `<repo>/.navtool.dev.db`
+- `$NAVTOOL_DB` overrides both.
 
-
-## Idea Scratch Space
-
-* By default navtool maintains a generic set that is always active
-
-* Allow loading nav sets for different projects via `nav use <PROJ>`
-
-* Allow listing nav sets that are available via `nav list sets`
-
-* Allow adding / removing nav sets
-
-* Use a SQLite database to support saving the sets/keys (overkill but good learning opportunity)
-
-    ```
-    CREATE TABLE IF NOT EXISTS sets (
-      name TEXT PRIMARY KEY
-    );
-
-    CREATE TABLE IF NOT EXISTS entries (
-      set_name TEXT,
-      key TEXT,
-      value TEXT,
-      PRIMARY KEY (set_name, key),
-      FOREIGN KEY (set_name) REFERENCES sets(name) ON DELETE CASCADE
-    );
-    ```
-
-    **NOTE:**
-    SQLite does not enforce foreign keys by default. You must do this after connecting:
-    `conn.execute("PRAGMA foreign_keys = ON")`
-
-* A good filesystem structure:
-    ```
-    mytool/
-    ├── pyproject.toml
-    ├── README.md
-    ├── .gitignore
-    ├── requirements-dev.txt
-    │
-    ├── mytool/                 # Python package
-    │   ├── __init__.py
-    │   ├── cli.py              # Python CLI entrypoint
-    │   ├── db.py               # SQLite access layer
-    │   ├── paths.py            # Path resolution logic
-    │   └── resources/
-    │       └── schema.sql      # SQLite schema
-    │
-    ├── shells/                 # Shell-specific logic
-    │   ├── bash/
-    │   │   ├── mytool.sh       # sourced functions
-    │   │   └── bootstrap.sh    # shell setup
-    │   ├── zsh/
-    │   │   ├── mytool.zsh
-    │   │   └── bootstrap.zsh
-    │   └── completions/
-    │       ├── mytool.bash
-    │       └── _mytool         # zsh completion
-    │
-    ├── scripts/                # Dev / maintenance scripts
-    │   └── init_db.py
-    │
-    └── tests/
-        ├── conftest.py
-        ├── test_db.py
-        ├── test_cli.py
-        └── test_paths.py
-    ```
+Run `nav db info` to see which file is in use. See [docs/dev-quickstart.md](docs/dev-quickstart.md)
+for the development setup.
