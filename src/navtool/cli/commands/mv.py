@@ -2,17 +2,19 @@
 
 import click
 
-from navtool.cli.tree import _parse_path, _require_node, _resolve
+from navtool.cli.tree import (_parse_path, _require_node, _resolve,
+                              name_path_completer)
 
 
 @click.command("mv")
-@click.argument("name_path", metavar="<NAME|A:B:C>")
+@click.argument("name_path", metavar="<NAME|A:B:C>", shell_complete=name_path_completer)
 @click.option(
     "--to",
     "-t",
     "to_path",
     default=None,
     help="Move under this existing parent (a name path).",
+    shell_complete=name_path_completer,
 )
 @click.option(
     "--root",

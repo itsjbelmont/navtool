@@ -2,11 +2,17 @@
 
 import click
 
-from navtool.cli.tree import _render_subtree, _require_node
+from navtool.cli.tree import (_render_subtree, _require_node,
+                              name_path_completer)
 
 
 @click.command("ls")
-@click.argument("name_path", metavar="<NAME|A:B:C>", required=False)
+@click.argument(
+    "name_path",
+    metavar="<NAME|A:B:C>",
+    required=False,
+    shell_complete=name_path_completer,
+)
 @click.pass_context
 def ls(ctx, name_path):
     """List entries as a tree. With a name path, list only that subtree."""

@@ -43,16 +43,50 @@ NavTool has two parts:
    source /path/to/navtool/shell/nav.sh
    ```
 
-4. Restart your terminals (or re-source your startup file).
+4. (Optional) Enable tab-completion by sourcing the script for your shell
+   *after* `nav.sh`:
 
-5. Verify:
+   ```sh
+   # ~/.zshrc  (compinit must already have run)
+   source /path/to/navtool/shell/completion.zsh
+
+   # ~/.bashrc
+   source /path/to/navtool/shell/completion.bash
+   ```
+
+5. Restart your terminals (or re-source your startup file).
+
+6. Verify:
 
    ```sh
    which navtool     # -> ~/.local/bin/navtool
    nav -h            # prints the help menu
+   nav <TAB>         # lists commands and top-level names
    ```
 
 To uninstall the CLI: `pipx uninstall navtool`.
+
+## Tab-Completion
+
+Once the completion script is sourced (step 4 above), `<TAB>` completes both
+`nav` and `navtool`:
+
+```sh
+$ nav <TAB>              # subcommands (add, rm, ls, …) + top-level names
+$ nav myp<TAB>           # -> nav myproj
+$ nav myproj:te<TAB>     # -> nav myproj:tests   (completes children at any depth)
+$ nav rm myproj:<TAB>    # name completion works after subcommands too
+$ nav add proj ~/pr<TAB> # directory arguments fall back to path completion
+```
+
+Names are completed **segment-by-segment**: after a `:` you get the children of
+the node named so far. Completion never appends a trailing `:` or space — the
+word ends exactly at the name, and you type the next `:` (to nest deeper) or a
+space yourself.
+
+> **bash note:** nested completion across `:` relies on the `bash-completion`
+> package (it provides the colon-aware helpers). Top-level commands and names
+> complete without it. zsh needs no extra packages.
 
 ## How It Works
 

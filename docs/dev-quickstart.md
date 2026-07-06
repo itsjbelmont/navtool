@@ -49,6 +49,31 @@ directory is the repository root.
    source <navtool_root>/shell/nav.sh
    ```
 
+6. (Optional) Source the tab-completion script for your shell, after `nav.sh`:
+
+   ```sh
+   source <navtool_root>/shell/completion.zsh   # or completion.bash
+   ```
+
+## Tab-completion
+
+Completion for both `nav` and `navtool` is backed by a single hidden command,
+`navtool __complete` ([../src/navtool/cli/commands/complete.py](../src/navtool/cli/commands/complete.py)),
+so there is one code path instead of per-shell logic. The shell functions in
+[../shell/completion.zsh](../shell/completion.zsh) and
+[../shell/completion.bash](../shell/completion.bash) collect the words typed so
+far and call it; it drives Click's own completion engine (subcommands, options,
+directories) and, for the `nav` wrapper's first word, unions in navigable names.
+
+Name completion is segment-by-segment: candidates come from
+`_complete_name_path` in [../src/navtool/cli/tree.py](../src/navtool/cli/tree.py),
+which also powers the Click `shell_complete` callbacks on the name-path
+arguments. Candidates are emitted verbatim — the wrappers run with "nospace" and
+never append a trailing `:` or space, so the user types the next separator.
+Directory arguments emit a sentinel that tells the wrapper to fall back to the
+shell's native path completion. Tests live in
+[../tests/test_completion.py](../tests/test_completion.py).
+
 ## Databases
 
 The dev and production builds use separate database files, selected automatically:

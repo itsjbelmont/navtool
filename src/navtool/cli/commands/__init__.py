@@ -6,6 +6,7 @@ object and free of import cycles. :func:`register_commands` wires them together.
 """
 
 from navtool.cli.commands.add import add
+from navtool.cli.commands.complete import complete
 from navtool.cli.commands.db import db_group
 from navtool.cli.commands.ls import ls
 from navtool.cli.commands.mv import mv
@@ -23,3 +24,5 @@ def register_commands(cli) -> None:
     for command in _TOP_LEVEL:
         cli.add_command(command)
     cli.add_command(db_group)
+    # Hidden completion backend for the shell wrappers (see complete.py).
+    cli.add_command(complete)

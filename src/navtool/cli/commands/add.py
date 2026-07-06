@@ -2,12 +2,15 @@
 
 import click
 
-from navtool.cli.tree import _parse_path, _resolve, _resolve_directory
+from navtool.cli.tree import (_parse_path, _resolve, _resolve_directory,
+                              name_path_completer)
 
 
 @click.command("add")
-@click.argument("name_path", metavar="<NAME|PARENT:NAME>")
-@click.argument("directory", metavar="<DIRECTORY>")
+@click.argument(
+    "name_path", metavar="<NAME|PARENT:NAME>", shell_complete=name_path_completer
+)
+@click.argument("directory", metavar="<DIRECTORY>", type=click.Path(file_okay=False))
 @click.pass_context
 def add(ctx, name_path, directory):
     """Register a name pointing at a directory.

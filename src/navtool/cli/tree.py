@@ -5,6 +5,7 @@ the top level down, joined with ':' — e.g. ``myproj:tests:unit``. A bare name
 (no ':') addresses a top-level node.
 """
 
+import sqlite3
 from pathlib import Path
 
 import click
@@ -84,6 +85,74 @@ def _node_path(conn, node_id: int) -> str:
         names.append(name)
         cur = parent_id
     return ":".join(reversed(names))
+
+
+def _complete_name_path(conn, incomplete: str) -> list[str]:
+    """Return full name-path candidates matching an incomplete name path.
+
+    Completion is *segment-by-segment*: the text after the last ':' is treated
+    as a partial name to match against the children of the node addressed by the
+    segments before it. ``myproj:te`` matches only children of ``myproj`` whose
+    name starts with ``te``, each returned as its full ``parent:child`` path so
+    the shell replaces the whole word.
+
+    A trailing ':' (``myproj:``) lists all children of ``myproj``. A bare,
+    colon-less incomplete matches top-level names. Returns [] if the parent
+    prefix doesn't resolve. Candidates carry no trailing ':' or space — the user
+    types the next separator, so completion never guesses whether to nest.
+    """
+    prefix, sep, partial = incomplete.rpartition(":")
+    if sep:
+        parent = _resolve(conn, _parse_path(prefix))
+        if parent is None:
+            return []
+        parent_id = parent[0]
+        base = prefix + ":"
+    else:
+        parent_id = None
+        base = ""
+    rows = conn.execute(
+        "SELECT name FROM nodes WHERE parent_id IS ? AND name LIKE ? ESCAPE '\\' "
+        "ORDER BY name",
+        (parent_id, _like_prefix(partial)),
+    ).fetchall()
+    return [base + name for (name,) in rows]
+
+
+def _name_completion_items(conn, incomplete):
+    """Build :class:`click.shell_completion.CompletionItem`s for names."""
+    return [
+        click.shell_completion.CompletionItem(path)
+        for path in _complete_name_path(conn, incomplete)
+    ]
+
+
+def name_path_completer(ctx, param, incomplete):
+    """Click ``shell_complete`` callback for name-path arguments.
+
+    Runs in the completion subprocess, so it opens its own connection instead of
+    relying on ``ctx.obj`` (the root group short-circuits during resilient
+    parsing and never populates it). Any failure yields no candidates rather
+    than breaking completion.
+    """
+    from navtool.cli.config import resolve_db_path
+
+    try:
+        conn = sqlite3.connect(resolve_db_path())
+    except sqlite3.Error:
+        return []
+    try:
+        return _complete_name_path(conn, incomplete)
+    except (sqlite3.Error, click.ClickException):
+        return []
+    finally:
+        conn.close()
+
+
+def _like_prefix(partial: str) -> str:
+    """Build a LIKE pattern matching ``partial`` as a literal prefix."""
+    escaped = partial.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return escaped + "%"
 
 
 def _render_subtree(conn, node_id, name, path, depth, lines) -> None:

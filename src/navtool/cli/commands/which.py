@@ -8,7 +8,12 @@ from navtool.cli.tree import _node_path
 
 
 @click.command("which")
-@click.argument("directory", metavar="<DIRECTORY>", required=False)
+@click.argument(
+    "directory",
+    metavar="<DIRECTORY>",
+    required=False,
+    type=click.Path(file_okay=False),
+)
 @click.pass_context
 def which(ctx, directory):
     """Show which name(s) point at a directory (default: the current directory).

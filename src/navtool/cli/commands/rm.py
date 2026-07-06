@@ -2,11 +2,12 @@
 
 import click
 
-from navtool.cli.tree import _descendant_count, _require_node
+from navtool.cli.tree import (_descendant_count, _require_node,
+                              name_path_completer)
 
 
 @click.command("rm")
-@click.argument("name_path", metavar="<NAME|A:B:C>")
+@click.argument("name_path", metavar="<NAME|A:B:C>", shell_complete=name_path_completer)
 @click.option(
     "--yes",
     "-y",

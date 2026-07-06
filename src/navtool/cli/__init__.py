@@ -10,12 +10,8 @@ import click
 
 from navtool.cli.commands import register_commands
 from navtool.cli.config import resolve_db_path
-from navtool.db import (
-    IncompatibleDatabaseError,
-    NewerDatabaseError,
-    create_connection,
-    migrate,
-)
+from navtool.db import (IncompatibleDatabaseError, NewerDatabaseError,
+                        create_connection, migrate)
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
@@ -28,6 +24,11 @@ def cli(ctx):
     addressed with a colon, e.g. `myproj` and `myproj:tests`.
     """
     ctx.ensure_object(dict)
+    # During shell completion Click parses resiliently and no command actually
+    # runs; skip opening/migrating the DB so a TAB press stays cheap and can't
+    # fail on a migration error. Completers open their own connections.
+    if ctx.resilient_parsing:
+        return
     path = resolve_db_path()
     conn = create_connection(path)
     try:
