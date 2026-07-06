@@ -31,7 +31,12 @@ you wish to use it as such.
 $ nav /path/to/directory # not special navtool syntax → falls through to `cd /path/to/directory`
 ```
 
+For a full list of available commands, run `nav --help` after installation.
+
 ## Manual Installation
+
+> **Hitting a snag?** See [docs/troubleshooting/README.md](docs/troubleshooting/README.md) for known
+> issues and fixes, organized by shell.
 
 ### Requirements
 
@@ -76,28 +81,6 @@ $ nav /path/to/directory # not special navtool syntax → falls through to `cd /
 
 To uninstall the CLI: `pipx uninstall navtool` (and remove the `navtool` block
 from your startup file).
-
-## Tab-Completion
-
-Once the integration is set up (via `navtool bootstrap`, or manually), `<TAB>`
-completes both `nav` and `navtool`:
-
-```sh
-$ nav <TAB>              # subcommands (add, rm, ls, …) + top-level names
-$ nav myp<TAB>           # -> nav myproj
-$ nav myproj:te<TAB>     # -> nav myproj:tests   (completes children at any depth)
-$ nav rm myproj:<TAB>    # name completion works after subcommands too
-$ nav add proj ~/pr<TAB> # directory arguments fall back to path completion
-```
-
-Names are completed **segment-by-segment**: after a `:` you get the children of
-the node named so far. Completion never appends a trailing `:` or space — the
-word ends exactly at the name, and you type the next `:` (to nest deeper) or a
-space yourself.
-
-> **bash note:** nested completion across `:` relies on the `bash-completion`
-> package (it provides the colon-aware helpers). Top-level commands and names
-> complete without it. zsh needs no extra packages.
 
 ## How It Works
 
