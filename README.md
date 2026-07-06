@@ -1,17 +1,18 @@
 # NavTool
 
-NavTool is a command-line tool that extends `cd`. You map short keywords to directories, then
-jump to them from anywhere with `nav <keyword>`. Keywords are organized into **sets** so you can
-keep per-project shortcuts separate.
+NavTool is a command-line tool that extends `cd`. You map short names to directories, then
+jump to them from anywhere with `nav <name>`. Names form a **tree** — any name can have nested
+child names — so you can keep a project and its sub-directories together.
 
 ```sh
-$ nav proj      # cd to the directory registered under the keyword "proj"
+$ nav myproj            # cd to the directory registered under the name "myproj"
+$ nav myproj:tests      # cd to "tests" nested under "myproj"
 ```
 
 NavTool has two parts:
 
 - **`navtool`** — a Python CLI (built with [Click](https://click.palletsprojects.com/)) that
-  stores keyword/directory mappings in a SQLite database.
+  stores name/directory mappings as a tree in a SQLite database.
 - **`nav`** — a shell function ([shell/nav.sh](shell/nav.sh)) that wraps `navtool`. It runs the
   actual `cd`, since a subprocess can't change its parent shell's directory.
 
@@ -55,70 +56,60 @@ To uninstall the CLI: `pipx uninstall navtool`.
 
 ## How It Works
 
-### Keywords and the `default` set
+### Names and the tree
 
-A **keyword** maps a short name to a directory. Keywords live in **sets**. The `default` set
-always exists and is what unqualified keywords resolve against:
-
-```sh
-$ nav key add proj ~/Projects/navtool   # registers "proj" in the default set
-$ nav proj                              # cd to ~/Projects/navtool
-```
-
-### Project sets and qualified keywords
-
-Any set other than `default` is addressed with a `set:keyword` qualifier. There is no "active
-set" state — a set's keywords are reachable by qualifier as soon as they exist:
+A **name** maps a short label to a directory. You navigate to it with `nav <name>`:
 
 ```sh
-$ nav set add work
-$ nav key add api ~/code/api --set work
-$ nav work:api                          # cd to ~/code/api
+$ nav add myproj ~/projects/myproj   # register "myproj" -> ~/projects/myproj
+$ nav myproj                         # cd to ~/projects/myproj
 ```
 
-Because each non-`default` set is only reached through its own qualifier, the same keyword name
-can be reused across sets without collision (`work:api`, `personal:api`, etc.).
+### Nested names
 
-### Set roots
-
-A set can also have a **root** directory, so its *name* navigates like a keyword — handy for a
-project you jump to often without registering a keyword for it:
+Any name can have nested child names, addressed with a colon (`parent:child`). The parent must
+already exist. There is no depth limit:
 
 ```sh
-$ nav set add myproject --root ~/projects/myproject
-$ nav myproject                         # cd to ~/projects/myproject
-$ nav myproject:                        # explicit root form
-$ nav set root myproject ~/projects/v2  # change it later ( --clear to remove )
+$ nav add myproj:tests ~/projects/myproj/tests   # "tests" nested under "myproj"
+$ nav myproj:tests                               # cd to ~/projects/myproj/tests
+$ nav add myproj:tests:unit ~/projects/myproj/tests/unit
+$ nav myproj:tests:unit
 ```
 
-A bare `nav <name>` resolves a `default` keyword first, then a set root. Because both share one
-namespace, a name can't exist as both — navtool rejects a set named after a `default` keyword and
-vice versa. The `default` set itself can't have a root.
+A bare `nav <name>` (no colon) only matches **top-level** names, so bare names are always
+unambiguous. The same child name can be reused under different parents (`proj:tests`,
+`other:tests`) without collision.
 
 ### Falling through to `cd`
 
-If an argument doesn't resolve to a registered keyword, `nav` passes it straight to `cd`, so it
+If an argument doesn't resolve to a registered name, `nav` passes it straight to `cd`, so it
 works as a drop-in replacement:
 
 ```sh
-$ nav ~/Downloads                       # not a keyword -> behaves like `cd ~/Downloads`
+$ nav ~/Downloads                       # not a name -> behaves like `cd ~/Downloads`
 ```
 
 ## Command Summary
 
 | Command | Purpose |
 |---|---|
-| `nav <keyword>` / `nav <set>` / `nav <set>:<keyword>` | Navigate to a registered directory or a set's root. |
-| `nav set list` / `show` / `add` / `remove` / `update` / `root` | Manage sets (including their root directory). |
-| `nav key list` / `add` / `remove` / `update` / `move` | Manage keyword entries. |
-| `nav db path` / `info` | Inspect the database file in use. |
-| `nav path <keyword>` | Resolve a keyword to its path (used internally by `nav`). |
+| `nav <name>` / `nav <a>:<b>:<c>` | Navigate to a registered directory. |
+| `nav add <name-path> <dir>` | Register a name (nest it with `parent:name`). |
+| `nav rm <name-path>` | Remove a name (and any nested children). |
+| `nav mv <name-path> [--to P] [--root] [--rename N]` | Reparent and/or rename. |
+| `nav update <name-path> <dir>` | Repoint a name at a new directory. |
+| `nav ls [<name-path>]` | List the tree, or one entry's subtree. |
+| `nav which [<dir>]` | Show which name(s) point at a directory (default: current). |
+| `nav db path` / `info` / `schema` | Inspect the database file and schema. |
+| `nav path <name-path>` | Resolve a name to its path (used internally by `nav`). |
 
 See [docs/cli-usage.md](docs/cli-usage.md) for the full command reference and examples.
 
 ## Data Storage
 
-Keywords and sets are stored in a single SQLite file. The location is chosen automatically:
+Names are stored as a single self-referential tree in one SQLite file. The location is chosen
+automatically:
 
 - Installed (pipx) build → `~/.navtool.db`
 - Dev/editable build run from the repo → `<repo>/.navtool.dev.db`

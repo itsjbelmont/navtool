@@ -66,18 +66,25 @@ The database schema is versioned with SQLite's `PRAGMA user_version`, tracked se
 app version (`pyproject.toml`). The current target is `SCHEMA_VERSION` in
 [../src/navtool/db.py](../src/navtool/db.py). When navtool opens a database that is behind, it
 writes a timestamped `*.pre-migrate-*` backup next to the file and then applies the pending
-migrations in order. A database created by a newer navtool is refused.
+migrations in order. A database created by a newer navtool is refused, and a pre-overhaul database
+(the old set/key model) is rejected with instructions to delete it.
 
-Migration 1 is the baseline: it applies `schema.sql` (idempotent), which both initializes a fresh
-database and adopts any pre-versioning one.
+**The migration chain is the single source of truth for the schema.** Migration 1 is the baseline:
+it applies `schema.sql`. Every later change is its own numbered migration — there is no separate
+declarative schema file to keep in sync (and therefore nothing that can drift). To see the current
+shape of the schema at any time, run `navtool db schema`, which builds a fresh in-memory database
+from the migrations and dumps its definitions.
 
 **Adding a schema migration:**
 
 1. Bump `SCHEMA_VERSION` in `db.py`.
 2. Add a `_migration_N(conn)` function and register it in the `MIGRATIONS` dict under version `N`.
-   Use `conn.execute(...)` statements (the runner wraps migrations 2+ in a transaction).
-3. Update `resources/schema.sql` so a *fresh* install produces the same final schema.
-4. Add a test in `tests/test_migrations.py` (fresh apply + upgrade-from-previous-version).
+   Use `conn.execute(...)` statements (the runner wraps migrations 2+ in a transaction). For
+   structural changes SQLite's `ALTER TABLE` can't express, use the create-new / copy / drop /
+   rename rebuild pattern inside the migration.
+3. Add a test in `tests/test_migrations.py` (fresh apply + upgrade-from-previous-version).
+
+`schema.sql` stays as the migration-1 baseline; do **not** edit it to reflect later migrations.
 
 ## Running Tests
 

@@ -7,7 +7,7 @@ nav() {
       ;;
   esac
 
-  # Discover navtool's top-level subcommands (set, key, path, ...).
+  # Discover navtool's top-level subcommands (add, rm, mv, ls, path, ...).
   local cmds
   cmds=$(navtool --help | awk '
     /Commands:/ {f=1; next}
@@ -20,8 +20,8 @@ nav() {
     return
   fi
 
-  # Single non-command argument → treat it as a keyword to navigate to.
-  # `navtool path` accepts both `keyword` and `set:keyword` forms and exits
+  # Single non-command argument → treat it as a name to navigate to.
+  # `navtool path` accepts both bare `name` and nested `a:b:c` forms and exits
   # non-zero when nothing matches, in which case we fall back to a plain `cd`
   # so `nav <path>` still behaves like `cd <path>`.
   if [ $# -eq 1 ]; then

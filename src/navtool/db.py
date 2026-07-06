@@ -6,12 +6,14 @@ from pathlib import Path
 # Path to schema.sql (the baseline schema applied by migration 1).
 SCHEMA_PATH = Path(__file__).parent / "resources" / "schema.sql"
 
-# The always-present set that unqualified keywords resolve against.
-DEFAULT_SET = "default"
-
 # Current target schema version. Bump this (and add a migration below) whenever
 # the schema changes. Stored in each database via `PRAGMA user_version`.
-SCHEMA_VERSION = 2
+#
+# The migration chain is the single source of truth for the schema: `schema.sql`
+# is just migration 1 (the baseline), and every later change is its own numbered
+# migration. There is no separate declarative schema to keep in sync. Use
+# `navtool db schema` to print the current shape on demand.
+SCHEMA_VERSION = 1
 
 # In-memory databases use this sentinel path and are never backed up.
 MEMORY_DB = ":memory:"
@@ -19,6 +21,10 @@ MEMORY_DB = ":memory:"
 
 class NewerDatabaseError(RuntimeError):
     """Raised when a database was created by a newer navtool than this one."""
+
+
+class IncompatibleDatabaseError(RuntimeError):
+    """Raised when a database predates the tree-model overhaul (has `sets`)."""
 
 
 def create_connection(db_path: str) -> sqlite3.Connection:
@@ -51,29 +57,16 @@ def _migration_1(conn: sqlite3.Connection) -> None:
     """
     Baseline schema (v0 -> v1).
 
-    Applies schema.sql, which creates the `sets` and `entries` tables and seeds
-    the `default` set. Every statement is idempotent (`CREATE TABLE IF NOT
-    EXISTS`, `INSERT OR IGNORE`), so this both initializes a fresh database and
-    adopts a pre-versioning database without altering its data.
+    Applies schema.sql, which creates the self-referential `nodes` table and its
+    indexes. Every statement is idempotent (`CREATE ... IF NOT EXISTS`), so this
+    both initializes a fresh database and is safe to re-run.
     """
     with open(SCHEMA_PATH, "r") as f:
         conn.executescript(f.read())
 
 
-def _migration_2(conn: sqlite3.Connection) -> None:
-    """
-    Add the `root` column to `sets` (v1 -> v2).
-
-    A set's ``root`` is an optional directory the set navigates to by its own
-    name, so ``nav myproject`` can jump to a project's top-level directory
-    without needing a keyword. NULL means the set has no root.
-    """
-    conn.execute("ALTER TABLE sets ADD COLUMN root TEXT")
-
-
 MIGRATIONS = {
     1: _migration_1,
-    2: _migration_2,
 }
 
 
@@ -81,6 +74,18 @@ def _has_tables(conn: sqlite3.Connection) -> bool:
     """True if the database already contains user tables (i.e. prior data)."""
     row = conn.execute(
         "SELECT 1 FROM sqlite_master WHERE type='table' LIMIT 1"
+    ).fetchone()
+    return row is not None
+
+
+def _is_legacy(conn: sqlite3.Connection) -> bool:
+    """True for a pre-overhaul database (the old set/key model had a `sets` table).
+
+    The schema was rebuilt around a single `nodes` tree with no automated path
+    from the old shape, so such databases are refused rather than migrated.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='sets' LIMIT 1"
     ).fetchone()
     return row is not None
 
@@ -103,6 +108,17 @@ def migrate(conn: sqlite3.Connection, db_path: str) -> tuple[int, int]:
 
     Raises :class:`NewerDatabaseError` if the database is ahead of this build.
     """
+    # Refuse pre-overhaul databases up front, before the version check below —
+    # otherwise their higher user_version would surface as a confusing
+    # "newer database" error instead of a clear "delete and start over" one.
+    if _is_legacy(conn):
+        raise IncompatibleDatabaseError(
+            f"The database at '{db_path}' was created by an older navtool that "
+            f"used sets and keys. That model has been replaced and cannot be "
+            f"migrated automatically. Delete the file and re-run to start fresh:"
+            f"\n    rm '{db_path}'"
+        )
+
     from_version = _get_user_version(conn)
 
     if from_version > SCHEMA_VERSION:
@@ -146,7 +162,7 @@ def get_connection(db_path: str) -> sqlite3.Connection:
     Public entry point.
 
     Returns a SQLite connection, migrated up to SCHEMA_VERSION (which also
-    initializes a fresh database and guarantees the `default` set exists).
+    initializes a fresh database with the empty `nodes` tree).
 
     Works for file-based databases and ':memory:' databases (used in tests).
     """

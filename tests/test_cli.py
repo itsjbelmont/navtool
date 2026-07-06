@@ -217,6 +217,57 @@ def test_ls_subtree(run, tmp_path):
     assert "b ->" not in result.output
 
 
+# ----------------- which (reverse lookup) -----------------
+def test_which_finds_single_key(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    result = run("which", str(tmp_path))
+    assert result.exit_code == 0
+    assert result.output.strip() == "proj"
+
+
+def test_which_returns_full_name_path_for_nested(run, tmp_path):
+    sub = tmp_path / "tests"
+    sub.mkdir()
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(sub))
+    result = run("which", str(sub))
+    assert result.exit_code == 0
+    assert result.output.strip() == "proj:tests"
+
+
+def test_which_lists_all_matching_keys(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    run("add", "b", str(tmp_path))  # same directory, second key
+    result = run("which", str(tmp_path))
+    assert result.exit_code == 0
+    assert result.output.split() == ["a", "b"]
+
+
+def test_which_exits_nonzero_when_unkeyed(run, tmp_path):
+    result = run("which", str(tmp_path))
+    assert result.exit_code != 0
+    assert "No name points at" in result.output
+
+
+def test_which_normalizes_trailing_slash_and_tilde(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    # A trailing slash resolves to the same normalized path.
+    result = run("which", str(tmp_path) + "/")
+    assert result.exit_code == 0
+    assert result.output.strip() == "proj"
+
+
+def test_which_defaults_to_cwd(runner, tmp_path, monkeypatch):
+    from navtool.cli import cli
+
+    run_add = runner.invoke(cli, ["add", "here", str(tmp_path)])
+    assert run_add.exit_code == 0
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(cli, ["which"])
+    assert result.exit_code == 0
+    assert result.output.strip() == "here"
+
+
 # ----------------- db group -----------------
 def test_db_path_matches_env_override(run, tmp_path):
     result = run("db", "path")

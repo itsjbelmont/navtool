@@ -1,16 +1,12 @@
 import os
-import click
 from pathlib import Path
 
+import click
+
 from navtool import __version__
-from navtool.db import (
-    create_connection,
-    migrate,
-    NewerDatabaseError,
-    DEFAULT_SET,
-    SCHEMA_VERSION,
-    _get_user_version,
-)
+from navtool.db import (MEMORY_DB, SCHEMA_VERSION, IncompatibleDatabaseError,
+                        NewerDatabaseError, _get_user_version,
+                        create_connection, get_connection, migrate)
 
 # The production database, used by installed (pipx) builds.
 PROD_DB_PATH = "~/.navtool.db"
@@ -53,52 +49,64 @@ def resolve_db_path() -> str:
 
 
 # ----------------- Helpers -----------------
-def _validate_name(name: str, kind: str) -> None:
-    """Reject names that would collide with the set:key delimiter."""
-    if ":" in name:
-        raise click.ClickException(
-            f"Invalid {kind} name '{name}': ':' is reserved as the set:key delimiter."
-        )
+# Nodes form a single tree. A "name path" addresses a node by walking names from
+# the top level down, joined with ':' — e.g. `myproj:tests:unit`. A bare name
+# (no ':') addresses a top-level node.
 
 
-def _require_set(conn, set_name: str) -> None:
-    """Raise a friendly error if the given set does not exist."""
-    row = conn.execute(
-        "SELECT 1 FROM sets WHERE set_name = ?", (set_name,)
-    ).fetchone()
-    if row is None:
-        raise click.ClickException(f"Set '{set_name}' does not exist.")
+def _parse_path(query: str) -> list[str]:
+    """Split a name path into its segments, validating them.
+
+    A single trailing ':' is tolerated (``proj:`` -> ``['proj']``) so the same
+    grammar covers "the node itself". Empty or interior-empty segments (``''``,
+    ``a::b``, ``:b``) are rejected.
+    """
+    parts = query.split(":")
+    if len(parts) > 1 and parts[-1] == "":
+        parts = parts[:-1]
+    if not parts or any(p == "" for p in parts):
+        raise click.ClickException(f"Invalid name path: '{query}'")
+    return parts
 
 
-# Sets and `default`-set keywords share one namespace: a bare `nav <name>` can
-# resolve to either, so a name must never exist as both. The two guards below
-# enforce that invariant wherever a name enters one of those namespaces.
+def _resolve(conn, segments: list[str]):
+    """Walk `segments` from the top level down.
+
+    Returns the final node row ``(id, parent_id, name, path)`` or ``None`` if any
+    segment has no match.
+    """
+    parent_id = None
+    node = None
+    for seg in segments:
+        node = conn.execute(
+            "SELECT id, parent_id, name, path FROM nodes "
+            "WHERE parent_id IS ? AND name = ?",
+            (parent_id, seg),
+        ).fetchone()
+        if node is None:
+            return None
+        parent_id = node[0]
+    return node
 
 
-def _guard_set_name_free(conn, name: str) -> None:
-    """Reject a set name that already exists as a keyword in the default set."""
-    row = conn.execute(
-        "SELECT 1 FROM entries WHERE set_name = ? AND entry_key = ?",
-        (DEFAULT_SET, name),
-    ).fetchone()
-    if row is not None:
-        raise click.ClickException(
-            f"The keyword `{name}` already exists as a key in the `{DEFAULT_SET}` set. "
-            f"Duplicating this keyword as a set name would cause keyword clashing."
-        )
+def _require_node(conn, name_path: str):
+    """Resolve a name path to a node row, raising a friendly error on a miss."""
+    node = _resolve(conn, _parse_path(name_path))
+    if node is None:
+        raise click.ClickException(f"'{name_path}' does not exist.")
+    return node
 
 
-def _guard_default_keyword_free(conn, name: str) -> None:
-    """Reject a default-set keyword whose name already exists as a set."""
-    row = conn.execute(
-        "SELECT 1 FROM sets WHERE set_name = ?", (name,)
-    ).fetchone()
-    if row is not None:
-        raise click.ClickException(
-            f"The keyword `{name}` is already in use as the name of a set. " 
-            f"Duplicating this keyword inside the `{DEFAULT_SET}` set would cause keyword clashing."
-            f"\n\t- To assign a navigable root directory to the `{name}` set, run `nav set update {name} --root <directory>`"
-        )
+def _descendant_count(conn, node_id: int) -> int:
+    """Number of nodes nested beneath `node_id` (excluding the node itself)."""
+    return conn.execute(
+        "WITH RECURSIVE sub(id) AS ("
+        "  SELECT id FROM nodes WHERE id = ?"
+        "  UNION ALL"
+        "  SELECT n.id FROM nodes n JOIN sub ON n.parent_id = sub.id"
+        ") SELECT COUNT(*) - 1 FROM sub",
+        (node_id,),
+    ).fetchone()[0]
 
 
 def _resolve_directory(directory: str) -> str:
@@ -109,15 +117,38 @@ def _resolve_directory(directory: str) -> str:
     return full_path
 
 
+def _node_path(conn, node_id: int) -> str:
+    """Build a node's full name path (``a:b:c``) by walking up to the root."""
+    names = []
+    cur = node_id
+    while cur is not None:
+        parent_id, name = conn.execute(
+            "SELECT parent_id, name FROM nodes WHERE id = ?", (cur,)
+        ).fetchone()
+        names.append(name)
+        cur = parent_id
+    return ":".join(reversed(names))
+
+
+def _render_subtree(conn, node_id, name, path, depth, lines) -> None:
+    """Append an indented ``name -> path`` line for a node and its descendants."""
+    lines.append(f"{'  ' * depth}{click.style(name, fg='green')} -> {path}")
+    for cid, cname, cpath in conn.execute(
+        "SELECT id, name, path FROM nodes WHERE parent_id = ? ORDER BY name",
+        (node_id,),
+    ).fetchall():
+        _render_subtree(conn, cid, cname, cpath, depth + 1, lines)
+
+
 # ----------------- Top-level CLI -----------------
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(package_name="navtool", prog_name="navtool")
 @click.pass_context
 def cli(ctx):
     """
-    Navigate directories by associating short keywords to commonly accessed
-    directory paths. Keywords can be organized into sets to support switching
-    between projects.
+    Navigate directories by associating short names to commonly accessed
+    directory paths. Names form a tree: a name can have nested child names
+    addressed with a colon, e.g. `myproj` and `myproj:tests`.
     """
     ctx.ensure_object(dict)
     path = resolve_db_path()
@@ -125,81 +156,243 @@ def cli(ctx):
     try:
         # Returns (from_version, to_version); records what this run migrated.
         ctx.obj["migration"] = migrate(conn, path)
-    except NewerDatabaseError as e:
+    except (NewerDatabaseError, IncompatibleDatabaseError) as e:
         raise click.ClickException(str(e))
     ctx.obj["conn"] = conn
 
 
 # ----------------- `path` command (shell plumbing) -----------------
-def _set_root(conn, set_name: str) -> str | None:
-    """Return the set's root directory, or None if the set has none / is absent."""
-    row = conn.execute(
-        "SELECT root FROM sets WHERE set_name = ?", (set_name,)
-    ).fetchone()
-    return row[0] if row is not None else None
-
-
 @cli.command("path")
-@click.argument("query", metavar="<KEYWORD|SET:KEYWORD|SET:>")
+@click.argument("query", metavar="<NAME|A:B:C>")
 @click.pass_context
 def get_path(ctx, query):
-    """Resolve a keyword, set:keyword, or set root to its directory path.
-
-    Resolution order for a bare ``<name>``:
-      1. a keyword ``<name>`` in the ``default`` set, else
-      2. a set named ``<name>`` that has a root directory.
-
-    ``<set>:<keyword>`` resolves that keyword within the set; the ``<set>:``
-    form (empty keyword) resolves the set's root.
+    """Resolve a name (or nested a:b:c path) to its directory path.
 
     Exits non-zero if nothing matches so the shell wrapper can fall back to a
     plain `cd`.
     """
     conn = ctx.obj["conn"]
+    node = _resolve(conn, _parse_path(query))
+    if node is None:
+        raise click.ClickException(f"No entry found for '{query}'.")
+    click.echo(node[3])
 
-    if ":" in query:
-        set_name, _, entry_key = query.partition(":")
-        if entry_key == "":
-            # `set:` form -> the set's root directory.
-            root = _set_root(conn, set_name)
-            if root is None:
-                raise click.ClickException(
-                    f"Set '{set_name}' has no root directory."
-                )
-            click.echo(root)
-            return
-        row = conn.execute(
-            "SELECT entry_value FROM entries WHERE set_name = ? AND entry_key = ?",
-            (set_name, entry_key),
-        ).fetchone()
-        if row is None:
+
+# ----------------- node management -----------------
+@cli.command("add")
+@click.argument("name_path", metavar="<NAME|PARENT:NAME>")
+@click.argument("directory", metavar="<DIRECTORY>")
+@click.pass_context
+def add(ctx, name_path, directory):
+    """Register a name pointing at a directory.
+
+    A bare NAME creates a top-level entry. A PARENT:NAME path nests the new entry
+    under an existing parent (which must already exist).
+    """
+    conn = ctx.obj["conn"]
+    *parent_segments, name = _parse_path(name_path)
+
+    parent_id = None
+    if parent_segments:
+        parent = _resolve(conn, parent_segments)
+        if parent is None:
             raise click.ClickException(
-                f"No keyword '{entry_key}' found in set '{set_name}'."
+                f"Parent '{':'.join(parent_segments)}' does not exist."
             )
-        click.echo(row[0])
-        return
+        parent_id = parent[0]
 
-    # Bare name: a default keyword, or a set navigated to by its own name.
-    keyword = conn.execute(
-        "SELECT entry_value FROM entries WHERE set_name = ? AND entry_key = ?",
-        (DEFAULT_SET, query),
-    ).fetchone()
-    root = _set_root(conn, query)
+    if conn.execute(
+        "SELECT 1 FROM nodes WHERE parent_id IS ? AND name = ?",
+        (parent_id, name),
+    ).fetchone():
+        where = ":".join(parent_segments) if parent_segments else "the top level"
+        raise click.ClickException(f"'{name}' already exists under {where}.")
 
-    # The namespace guards prevent creating both, but a database predating them
-    # could hold a clash; refuse to guess and tell the user how to disambiguate.
-    if keyword is not None and root is not None:
+    full_path = _resolve_directory(directory)
+    conn.execute(
+        "INSERT INTO nodes (parent_id, name, path) VALUES (?, ?, ?)",
+        (parent_id, name, full_path),
+    )
+    conn.commit()
+    click.echo(f"Added '{name_path}' -> {full_path}")
+
+
+@cli.command("rm")
+@click.argument("name_path", metavar="<NAME|A:B:C>")
+@click.option(
+    "--yes",
+    "-y",
+    is_flag=True,
+    default=False,
+    help="Skip the confirmation prompt for nested entries.",
+)
+@click.pass_context
+def rm(ctx, name_path, yes):
+    """Remove an entry. Nested children are removed with it."""
+    conn = ctx.obj["conn"]
+    node = _require_node(conn, name_path)
+    node_id = node[0]
+
+    nested = _descendant_count(conn, node_id)
+    if nested > 0 and not yes:
+        if not click.confirm(
+            f"'{name_path}' has {nested} nested entr"
+            f"{'y' if nested == 1 else 'ies'} that will also be removed. Continue?",
+            default=False,
+        ):
+            click.echo("Operation cancelled.")
+            return
+
+    conn.execute("DELETE FROM nodes WHERE id = ?", (node_id,))
+    conn.commit()
+    suffix = (
+        f" and {nested} nested entr{'y' if nested == 1 else 'ies'}" if nested else ""
+    )
+    click.echo(f"Removed '{name_path}'{suffix}")
+
+
+@cli.command("mv")
+@click.argument("name_path", metavar="<NAME|A:B:C>")
+@click.option(
+    "--to",
+    "-t",
+    "to_path",
+    default=None,
+    help="Move under this existing parent (a name path).",
+)
+@click.option(
+    "--root",
+    is_flag=True,
+    default=False,
+    help="Move to the top level (no parent).",
+)
+@click.option("--rename", "-r", "new_name", default=None, help="New name.")
+@click.pass_context
+def mv(ctx, name_path, to_path, root, new_name):
+    """Move an entry under a new parent and/or rename it."""
+    conn = ctx.obj["conn"]
+    if to_path is not None and root:
+        raise click.ClickException("Pass either --to or --root, not both.")
+    if to_path is None and not root and new_name is None:
+        raise click.ClickException("Nothing to do: pass --to, --root, and/or --rename.")
+    if new_name is not None and ":" in new_name:
         raise click.ClickException(
-            f"'{query}' is ambiguous: it is both a keyword in the '{DEFAULT_SET}' "
-            f"set and a set with a root. Use 'default:{query}' or '{query}:'."
+            "A name cannot contain ':'. Use --to to change the parent."
         )
-    if keyword is not None:
-        click.echo(keyword[0])
+
+    node_id, cur_parent, cur_name, _ = _require_node(conn, name_path)
+
+    reparent = to_path is not None or root
+    if root:
+        new_parent_id = None
+    elif to_path is not None:
+        parent = _resolve(conn, _parse_path(to_path))
+        if parent is None:
+            raise click.ClickException(f"Destination '{to_path}' does not exist.")
+        new_parent_id = parent[0]
+    else:
+        new_parent_id = cur_parent
+
+    # Reject moves that would create a cycle: the new parent must not be the node
+    # itself or any of its descendants.
+    if reparent and new_parent_id is not None:
+        anc = new_parent_id
+        while anc is not None:
+            if anc == node_id:
+                raise click.ClickException(
+                    f"Cannot move '{name_path}' under itself or its own descendant."
+                )
+            row = conn.execute(
+                "SELECT parent_id FROM nodes WHERE id = ?", (anc,)
+            ).fetchone()
+            anc = row[0] if row else None
+
+    final_parent = new_parent_id if reparent else cur_parent
+    final_name = new_name if new_name is not None else cur_name
+
+    if conn.execute(
+        "SELECT 1 FROM nodes WHERE parent_id IS ? AND name = ? AND id != ?",
+        (final_parent, final_name, node_id),
+    ).fetchone():
+        raise click.ClickException(
+            f"A node named '{final_name}' already exists at the destination."
+        )
+
+    conn.execute(
+        "UPDATE nodes SET parent_id = ?, name = ? WHERE id = ?",
+        (final_parent, final_name, node_id),
+    )
+    conn.commit()
+    if root:
+        dest = " to the top level"
+    elif to_path is not None:
+        dest = f" under '{to_path}'"
+    else:
+        dest = ""
+    click.echo(f"Moved '{name_path}' -> '{final_name}'{dest}")
+
+
+@cli.command("update")
+@click.argument("name_path", metavar="<NAME|A:B:C>")
+@click.argument("directory", metavar="<NEW_DIRECTORY>")
+@click.pass_context
+def update(ctx, name_path, directory):
+    """Repoint an existing entry at a new directory."""
+    conn = ctx.obj["conn"]
+    node = _require_node(conn, name_path)
+    full_path = _resolve_directory(directory)
+    conn.execute("UPDATE nodes SET path = ? WHERE id = ?", (full_path, node[0]))
+    conn.commit()
+    click.echo(f"Updated '{name_path}' -> {full_path}")
+
+
+@cli.command("ls")
+@click.argument("name_path", metavar="<NAME|A:B:C>", required=False)
+@click.pass_context
+def ls(ctx, name_path):
+    """List entries as a tree. With a name path, list only that subtree."""
+    conn = ctx.obj["conn"]
+    lines: list[str] = []
+    if name_path:
+        node = _require_node(conn, name_path)
+        _render_subtree(conn, node[0], node[2], node[3], 0, lines)
+    else:
+        for tid, tname, tpath in conn.execute(
+            "SELECT id, name, path FROM nodes WHERE parent_id IS NULL ORDER BY name"
+        ).fetchall():
+            _render_subtree(conn, tid, tname, tpath, 0, lines)
+    if not lines:
+        click.echo("(no entries)")
         return
-    if root is not None:
-        click.echo(root)
-        return
-    raise click.ClickException(f"No keyword '{query}' found in set '{DEFAULT_SET}'.")
+    for line in lines:
+        click.echo(line)
+
+
+@cli.command("which")
+@click.argument("directory", metavar="<DIRECTORY>", required=False)
+@click.pass_context
+def which(ctx, directory):
+    """Show which name(s) point at a directory (default: the current directory).
+
+    Normalizes the directory the same way `add` does (expanding `~` and
+    resolving symlinks), then lists every name whose target matches it. Exits
+    non-zero if none do, so it can be used as a check.
+    """
+    conn = ctx.obj["conn"]
+    target = str(Path(directory or ".").expanduser().resolve())
+
+    ids = [
+        row[0]
+        for row in conn.execute(
+            "SELECT id FROM nodes WHERE path = ?", (target,)
+        ).fetchall()
+    ]
+    if not ids:
+        click.echo(f"No name points at {target}.")
+        ctx.exit(1)
+
+    for name_path in sorted(_node_path(conn, node_id) for node_id in ids):
+        click.echo(click.style(name_path, fg="green"))
 
 
 # ================= `db` command group =================
@@ -229,8 +422,10 @@ def db_info(ctx):
     conn = ctx.obj["conn"]
     path, source = resolve_db()
 
-    set_count = conn.execute("SELECT COUNT(*) FROM sets").fetchone()[0]
-    entry_count = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
+    node_count = conn.execute("SELECT COUNT(*) FROM nodes").fetchone()[0]
+    top_count = conn.execute(
+        "SELECT COUNT(*) FROM nodes WHERE parent_id IS NULL"
+    ).fetchone()[0]
     size = _format_size(Path(path).stat().st_size) if Path(path).exists() else "0 B"
 
     db_version = _get_user_version(conn)
@@ -240,13 +435,33 @@ def db_info(ctx):
         schema = f"version {db_version} -> {SCHEMA_VERSION} pending"
 
     label = click.style(path, fg="cyan")
-    click.echo(f"Database: {label}")
-    click.echo(f"Source:   {source}")
-    click.echo(f"Size:     {size}")
-    click.echo(f"Schema:   {schema}")
-    click.echo(f"NavTool:  {__version__}")
-    click.echo(f"Sets:     {set_count}")
-    click.echo(f"Entries:  {entry_count}")
+    click.echo(f"Database:  {label}")
+    click.echo(f"Source:    {source}")
+    click.echo(f"Size:      {size}")
+    click.echo(f"Schema:    {schema}")
+    click.echo(f"NavTool:   {__version__}")
+    click.echo(f"Nodes:     {node_count}")
+    click.echo(f"Top-level: {top_count}")
+
+
+@db_group.command("schema")
+def db_schema():
+    """Print the current database schema.
+
+    Generated by building a fresh in-memory database from the migration chain and
+    dumping its definitions, so it always reflects the real schema — there is no
+    hand-maintained schema file that could drift.
+    """
+    conn = get_connection(MEMORY_DB)
+    try:
+        rows = conn.execute(
+            "SELECT sql FROM sqlite_master WHERE sql IS NOT NULL "
+            "ORDER BY type = 'index', name"
+        ).fetchall()
+    finally:
+        conn.close()
+    for (sql,) in rows:
+        click.echo(f"{sql};")
 
 
 @db_group.command("migrate")
@@ -266,435 +481,3 @@ def db_migrate(ctx):
         click.echo(
             f"Migrated database from schema version {from_version} to {to_version}."
         )
-
-
-# ================= `set` command group =================
-@cli.group("set")
-def set_group():
-    """Manage sets (named collections of keywords)."""
-
-
-@set_group.command("list")
-@click.option(
-    "--describe",
-    "-d",
-    is_flag=True,
-    default=False,
-    help="Also show each set's description.",
-)
-@click.pass_context
-def set_list(ctx, describe):
-    """List all sets."""
-    conn = ctx.obj["conn"]
-    rows = conn.execute(
-        "SELECT set_name, description, root FROM sets "
-        "ORDER BY set_name = ? DESC, set_name",
-        (DEFAULT_SET,),
-    ).fetchall()
-    for set_name, description, root in rows:
-        color = "cyan" if set_name == DEFAULT_SET else "green"
-        text = click.style(set_name, fg=color)
-        if describe:
-            click.echo(f"{text} – {description or '(no description)'}")
-            if root:
-                click.echo(f"  root -> {root}")
-        else:
-            click.echo(text)
-
-
-@set_group.command("show")
-@click.argument("set_name", metavar="<NAME>")
-@click.pass_context
-def set_show(ctx, set_name):
-    """Show a set's description and all of its keyword entries."""
-    conn = ctx.obj["conn"]
-    row = conn.execute(
-        "SELECT description, root FROM sets WHERE set_name = ?", (set_name,)
-    ).fetchone()
-    if row is None:
-        raise click.ClickException(f"Set '{set_name}' does not exist.")
-    description, root = row
-    click.echo(f"{set_name}: {description or '(no description)'}")
-    if root:
-        click.echo(f"  root -> {root}")
-    _echo_entries(conn, set_name)
-
-
-@set_group.command("add")
-@click.argument("set_name", metavar="<NAME>")
-@click.option(
-    "--desc",
-    "-d",
-    "description",
-    default=None,
-    help="Optional description for the set.",
-)
-@click.option(
-    "--root",
-    "-r",
-    "root",
-    default=None,
-    help="Optional root directory this set navigates to by its own name.",
-)
-@click.pass_context
-def set_add(ctx, set_name, description, root):
-    """Create a new set."""
-    conn = ctx.obj["conn"]
-    _validate_name(set_name, "set")
-    _guard_set_name_free(conn, set_name)
-    if conn.execute(
-        "SELECT 1 FROM sets WHERE set_name = ?", (set_name,)
-    ).fetchone():
-        raise click.ClickException(f"Set '{set_name}' already exists.")
-    if root is not None:
-        root = _resolve_directory(root)
-    conn.execute(
-        "INSERT INTO sets (set_name, description, root) VALUES (?, ?, ?)",
-        (set_name, description, root),
-    )
-    conn.commit()
-    click.echo(f"Created set: {set_name} - {description or '(no description)'}")
-    if root is not None:
-        click.echo(f"  root -> {root}")
-
-
-@set_group.command("remove")
-@click.argument("set_name", metavar="<NAME>")
-@click.option(
-    "--yes",
-    "-y",
-    is_flag=True,
-    default=False,
-    help="Skip the confirmation prompt.",
-)
-@click.pass_context
-def set_remove(ctx, set_name, yes):
-    """Delete a set and all of its keywords."""
-    conn = ctx.obj["conn"]
-    if set_name == DEFAULT_SET:
-        raise click.ClickException("The 'default' set cannot be removed.")
-    _require_set(conn, set_name)
-    if not yes and not click.confirm(
-        f"Are you sure you want to delete the set '{set_name}'?", default=False
-    ):
-        click.echo("Operation cancelled.")
-        return
-    conn.execute("DELETE FROM sets WHERE set_name = ?", (set_name,))
-    conn.commit()
-    click.echo(f"Deleted the '{set_name}' set.")
-
-
-@set_group.command("update")
-@click.argument("set_name", metavar="<NAME>")
-@click.option("--rename", "new_name", default=None, help="New name for the set.")
-@click.option(
-    "--desc",
-    "-d",
-    "description",
-    default=None,
-    help="New description for the set.",
-)
-@click.option(
-    "--root",
-    "-r",
-    "root",
-    default=None,
-    help="New root directory for the set.",
-)
-@click.option(
-    "--clear-root",
-    is_flag=True,
-    default=False,
-    help="Remove the set's root directory.",
-)
-@click.pass_context
-def set_update(ctx, set_name, new_name, description, root, clear_root):
-    """Rename a set and/or change its description or root."""
-    conn = ctx.obj["conn"]
-    if set_name == DEFAULT_SET:
-        raise click.ClickException("The 'default' set cannot be modified.")
-    _require_set(conn, set_name)
-    if root is not None and clear_root:
-        raise click.ClickException("Pass either --root or --clear-root, not both.")
-    if (
-        new_name is None
-        and description is None
-        and root is None
-        and not clear_root
-    ):
-        raise click.ClickException(
-            "Nothing to update: pass --rename, --desc, --root, and/or --clear-root."
-        )
-
-    if new_name is not None:
-        _validate_name(new_name, "set")
-        if new_name == DEFAULT_SET:
-            raise click.ClickException("Cannot rename a set to 'default'.")
-        _guard_set_name_free(conn, new_name)
-        if conn.execute(
-            "SELECT 1 FROM sets WHERE set_name = ?", (new_name,)
-        ).fetchone():
-            raise click.ClickException(f"Set '{new_name}' already exists.")
-
-    if root is not None:
-        root = _resolve_directory(root)
-
-    if description is not None:
-        conn.execute(
-            "UPDATE sets SET description = ? WHERE set_name = ?",
-            (description, set_name),
-        )
-    if root is not None:
-        conn.execute(
-            "UPDATE sets SET root = ? WHERE set_name = ?", (root, set_name)
-        )
-    if clear_root:
-        conn.execute(
-            "UPDATE sets SET root = NULL WHERE set_name = ?", (set_name,)
-        )
-    if new_name is not None:
-        # ON UPDATE CASCADE carries the rename through to the entries table.
-        conn.execute(
-            "UPDATE sets SET set_name = ? WHERE set_name = ?",
-            (new_name, set_name),
-        )
-    conn.commit()
-
-    if new_name is not None:
-        click.echo(f"Renamed set '{set_name}' -> '{new_name}'")
-    if description is not None:
-        click.echo(f"Updated description for set '{new_name or set_name}'")
-    if root is not None:
-        click.echo(f"Set root for '{new_name or set_name}' -> {root}")
-    if clear_root:
-        click.echo(f"Cleared root for set '{new_name or set_name}'")
-
-
-@set_group.command("root")
-@click.argument("set_name", metavar="<NAME>")
-@click.argument("directory", metavar="<DIRECTORY>", required=False)
-@click.option(
-    "--clear",
-    is_flag=True,
-    default=False,
-    help="Remove the set's root directory.",
-)
-@click.pass_context
-def set_root(ctx, set_name, directory, clear):
-    """Set, change, or clear the root directory a set navigates to by name.
-
-    ``nav set root <NAME> <DIRECTORY>`` points the set at a root;
-    ``nav set root <NAME> --clear`` removes it.
-    """
-    conn = ctx.obj["conn"]
-    if set_name == DEFAULT_SET:
-        raise click.ClickException("The 'default' set cannot have a root directory.")
-    _require_set(conn, set_name)
-    if clear and directory is not None:
-        raise click.ClickException("Pass either a directory or --clear, not both.")
-    if not clear and directory is None:
-        raise click.ClickException("Provide a directory to set, or --clear to remove.")
-
-    if clear:
-        conn.execute("UPDATE sets SET root = NULL WHERE set_name = ?", (set_name,))
-        conn.commit()
-        click.echo(f"Cleared root for set '{set_name}'")
-        return
-
-    full_path = _resolve_directory(directory)
-    conn.execute(
-        "UPDATE sets SET root = ? WHERE set_name = ?", (full_path, set_name)
-    )
-    conn.commit()
-    click.echo(f"Set root for '{set_name}' -> {full_path}")
-
-
-# ================= `key` command group =================
-@cli.group("key")
-def key_group():
-    """Manage keyword entries within sets."""
-
-
-def _echo_entries(conn, set_name: str) -> None:
-    """Print the entries of a set (indented), or a placeholder if empty."""
-    entries = conn.execute(
-        "SELECT entry_key, entry_value FROM entries "
-        "WHERE set_name = ? ORDER BY entry_key",
-        (set_name,),
-    ).fetchall()
-    if not entries:
-        click.echo("  (no entries)")
-        return
-    for entry_key, entry_value in entries:
-        click.echo(f"  {entry_key} -> {entry_value}")
-
-
-@key_group.command("list")
-@click.option(
-    "--set",
-    "-s",
-    "set_name",
-    default=None,
-    help="Only list keywords in this set.",
-)
-@click.pass_context
-def key_list(ctx, set_name):
-    """List keywords, grouped by set."""
-    conn = ctx.obj["conn"]
-    if set_name is not None:
-        _require_set(conn, set_name)
-        set_names = [set_name]
-    else:
-        set_names = [
-            r[0]
-            for r in conn.execute(
-                "SELECT set_name FROM sets ORDER BY set_name = ? DESC, set_name",
-                (DEFAULT_SET,),
-            ).fetchall()
-        ]
-
-    for name in set_names:
-        color = "cyan" if name == DEFAULT_SET else "green"
-        click.echo(click.style(f"{name}:", fg=color))
-        _echo_entries(conn, name)
-
-
-@key_group.command("add")
-@click.argument("keyword", metavar="<KEYWORD>")
-@click.argument("directory", metavar="<DIRECTORY>")
-@click.option(
-    "--set",
-    "-s",
-    "set_name",
-    default=DEFAULT_SET,
-    show_default=True,
-    help="Set to register the keyword in.",
-)
-@click.pass_context
-def key_add(ctx, keyword, directory, set_name):
-    """Register a keyword pointing at a directory."""
-    conn = ctx.obj["conn"]
-    _validate_name(keyword, "keyword")
-    _require_set(conn, set_name)
-    if set_name == DEFAULT_SET:
-        _guard_default_keyword_free(conn, keyword)
-    full_path = _resolve_directory(directory)
-
-    if conn.execute(
-        "SELECT 1 FROM entries WHERE set_name = ? AND entry_key = ?",
-        (set_name, keyword),
-    ).fetchone():
-        raise click.ClickException(
-            f"Keyword '{keyword}' already exists in set '{set_name}'."
-        )
-
-    conn.execute(
-        "INSERT INTO entries (set_name, entry_key, entry_value) VALUES (?, ?, ?)",
-        (set_name, keyword, full_path),
-    )
-    conn.commit()
-    click.echo(f"Registered '{keyword}' -> '{full_path}' in set '{set_name}'")
-
-
-@key_group.command("remove")
-@click.argument("keyword", metavar="<KEYWORD>")
-@click.option(
-    "--set",
-    "-s",
-    "set_name",
-    default=DEFAULT_SET,
-    show_default=True,
-    help="Set the keyword belongs to.",
-)
-@click.pass_context
-def key_remove(ctx, keyword, set_name):
-    """Remove a keyword from a set."""
-    conn = ctx.obj["conn"]
-    cur = conn.execute(
-        "DELETE FROM entries WHERE set_name = ? AND entry_key = ?",
-        (set_name, keyword),
-    )
-    conn.commit()
-    if cur.rowcount == 0:
-        raise click.ClickException(
-            f"No keyword '{keyword}' found in set '{set_name}'."
-        )
-    click.echo(f"Removed '{keyword}' from set '{set_name}'")
-
-
-@key_group.command("update")
-@click.argument("keyword", metavar="<KEYWORD>")
-@click.argument("directory", metavar="<NEW_DIRECTORY>")
-@click.option(
-    "--set",
-    "-s",
-    "set_name",
-    default=DEFAULT_SET,
-    show_default=True,
-    help="Set the keyword belongs to.",
-)
-@click.pass_context
-def key_update(ctx, keyword, directory, set_name):
-    """Repoint an existing keyword at a new directory."""
-    conn = ctx.obj["conn"]
-    full_path = _resolve_directory(directory)
-    cur = conn.execute(
-        "UPDATE entries SET entry_value = ? WHERE set_name = ? AND entry_key = ?",
-        (full_path, set_name, keyword),
-    )
-    conn.commit()
-    if cur.rowcount == 0:
-        raise click.ClickException(
-            f"No keyword '{keyword}' found in set '{set_name}'."
-        )
-    click.echo(f"Updated '{keyword}' -> '{full_path}' in set '{set_name}'")
-
-
-@key_group.command("move")
-@click.argument("keyword", metavar="<KEYWORD>")
-@click.option("--to", "-t", "to_set", required=True, help="Destination set.")
-@click.option(
-    "--from",
-    "-f",
-    "from_set",
-    default=DEFAULT_SET,
-    show_default=True,
-    help="Source set.",
-)
-@click.pass_context
-def key_move(ctx, keyword, to_set, from_set):
-    """Move a keyword (and its path) from one set to another."""
-    conn = ctx.obj["conn"]
-    if from_set == to_set:
-        raise click.ClickException("Source and destination sets are the same.")
-    _require_set(conn, from_set)
-    _require_set(conn, to_set)
-    if to_set == DEFAULT_SET:
-        _guard_default_keyword_free(conn, keyword)
-
-    row = conn.execute(
-        "SELECT entry_value FROM entries WHERE set_name = ? AND entry_key = ?",
-        (from_set, keyword),
-    ).fetchone()
-    if row is None:
-        raise click.ClickException(
-            f"No keyword '{keyword}' found in set '{from_set}'."
-        )
-    value = row[0]
-
-    if conn.execute(
-        "SELECT 1 FROM entries WHERE set_name = ? AND entry_key = ?",
-        (to_set, keyword),
-    ).fetchone():
-        raise click.ClickException(
-            f"Keyword '{keyword}' already exists in set '{to_set}'."
-        )
-
-    conn.execute(
-        "UPDATE entries SET set_name = ? WHERE set_name = ? AND entry_key = ?",
-        (to_set, from_set, keyword),
-    )
-    conn.commit()
-    click.echo(
-        f"Moved '{keyword}' -> '{value}' from set '{from_set}' to set '{to_set}'"
-    )
