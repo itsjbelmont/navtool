@@ -42,6 +42,13 @@ directory is the repository root.
    If `which navtool` points elsewhere (e.g. `~/.local/bin/navtool`), an installed build is
    shadowing the dev one. Run `pipx uninstall navtool` to remove it.
 
+5. Ensure that the `./shell/nav.sh` script is sourced in your environment to hook the `nav` command into your shell.
+   To do this, source the script from your shell's startup file (e.g. `~/.zshrc` or `~/.bashrc`):
+
+   ```sh
+   source <navtool_root>/shell/nav.sh
+   ```
+
 ## Databases
 
 The dev and production builds use separate database files, selected automatically:
