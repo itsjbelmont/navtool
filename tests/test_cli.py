@@ -12,7 +12,7 @@ def runner(tmp_path, monkeypatch):
     multiple `run(...)` calls within a single test.
     """
     db_path = tmp_path / "navtool.db"
-    monkeypatch.setattr("navtool.cli.DEFAULT_DB_PATH", str(db_path))
+    monkeypatch.setenv("NAVTOOL_DB", str(db_path))
     return CliRunner()
 
 
@@ -157,6 +157,26 @@ def test_key_move_collision_rejected(run, tmp_path):
     result = run("key", "move", "k", "--to", "proj")
     assert result.exit_code != 0
     assert "already exists" in result.output
+
+
+# ----------------- db group -----------------
+def test_db_path_matches_env_override(run, tmp_path):
+    result = run("db", "path")
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path / "navtool.db")
+
+
+def test_db_info_reports_override_and_counts(run, tmp_path):
+    run("set", "add", "proj")
+    run("key", "add", "k", str(tmp_path), "--set", "proj")
+
+    result = run("db", "info")
+    assert result.exit_code == 0
+    assert str(tmp_path / "navtool.db") in result.output
+    assert "override via $NAVTOOL_DB" in result.output
+    # default + proj = 2 sets, 1 entry
+    assert "Sets:     2" in result.output
+    assert "Entries:  1" in result.output
 
 
 # ----------------- path resolution -----------------

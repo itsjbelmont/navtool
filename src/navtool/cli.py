@@ -1,9 +1,47 @@
+import os
 import click
 from pathlib import Path
 
 from navtool.db import get_connection, DEFAULT_SET
 
-DEFAULT_DB_PATH = "~/.navtool.db"
+# The production database, used by installed (pipx) builds.
+PROD_DB_PATH = "~/.navtool.db"
+# Environment variable that explicitly overrides the database location.
+DB_ENV_VAR = "NAVTOOL_DB"
+
+
+def _running_from_source_checkout() -> bool:
+    """True when running as an editable/dev install from the repo checkout.
+
+    Editable installs execute from ``<repo>/src/navtool/cli.py``, so a
+    ``pyproject.toml`` sits two directories above this package. A regular
+    (pipx / site-packages) install has no such file there.
+    """
+    return (Path(__file__).resolve().parents[2] / "pyproject.toml").is_file()
+
+
+def resolve_db() -> tuple[str, str]:
+    """Choose the database file to use and explain why.
+
+    Returns ``(path, source)`` where ``source`` is a short human-readable label.
+
+    Priority:
+      1. ``$NAVTOOL_DB`` — explicit override, always wins.
+      2. Dev build  -> ``<repo>/.navtool.dev.db`` (kept out of prod's data).
+      3. Prod build -> ``~/.navtool.db``.
+    """
+    override = os.environ.get(DB_ENV_VAR)
+    if override:
+        return str(Path(override).expanduser()), f"override via ${DB_ENV_VAR}"
+    if _running_from_source_checkout():
+        path = Path(__file__).resolve().parents[2] / ".navtool.dev.db"
+        return str(path), "dev build (editable install)"
+    return str(Path(PROD_DB_PATH).expanduser()), "prod build (installed)"
+
+
+def resolve_db_path() -> str:
+    """Return just the resolved database path (see :func:`resolve_db`)."""
+    return resolve_db()[0]
 
 
 # ----------------- Helpers -----------------
@@ -41,9 +79,8 @@ def cli(ctx):
     directory paths. Keywords can be organized into sets to support switching
     between projects.
     """
-    db_path = str(Path(DEFAULT_DB_PATH).expanduser())
     ctx.ensure_object(dict)
-    ctx.obj["conn"] = get_connection(db_path)
+    ctx.obj["conn"] = get_connection(resolve_db_path())
 
 
 # ----------------- `path` command (shell plumbing) -----------------
@@ -71,6 +108,45 @@ def get_path(ctx, query):
             f"No keyword '{entry_key}' found in set '{set_name}'."
         )
     click.echo(row[0])
+
+
+# ================= `db` command group =================
+@cli.group("db")
+def db_group():
+    """Inspect the database file navtool is using."""
+
+
+@db_group.command("path")
+def db_path():
+    """Print the path of the database file currently in use."""
+    click.echo(resolve_db_path())
+
+
+def _format_size(num_bytes: int) -> str:
+    size = float(num_bytes)
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.1f} {unit}" if unit != "B" else f"{int(size)} {unit}"
+        size /= 1024
+
+
+@db_group.command("info")
+@click.pass_context
+def db_info(ctx):
+    """Show which database is in use, why, and a quick summary of its contents."""
+    conn = ctx.obj["conn"]
+    path, source = resolve_db()
+
+    set_count = conn.execute("SELECT COUNT(*) FROM sets").fetchone()[0]
+    entry_count = conn.execute("SELECT COUNT(*) FROM entries").fetchone()[0]
+    size = _format_size(Path(path).stat().st_size) if Path(path).exists() else "0 B"
+
+    label = click.style(path, fg="cyan")
+    click.echo(f"Database: {label}")
+    click.echo(f"Source:   {source}")
+    click.echo(f"Size:     {size}")
+    click.echo(f"Sets:     {set_count}")
+    click.echo(f"Entries:  {entry_count}")
 
 
 # ================= `set` command group =================

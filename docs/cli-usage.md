@@ -64,6 +64,26 @@ still behaves like plain `cd`.
 path and prints it, exiting non-zero if nothing matches. This is what the shell wrapper calls
 under the hood — you generally won't type this yourself, but it's a normal top-level command.
 
+### `nav db` — inspect the database
+
+The database file is chosen automatically: a dev/editable build run from the repo uses
+`<repo>/.navtool.dev.db`, an installed (pipx) build uses `~/.navtool.db`, and `$NAVTOOL_DB`
+overrides either one. These commands report what's actually in effect.
+
+| Command | Description |
+|---|---|
+| `nav db path` | Print just the path of the database file in use (scriptable). |
+| `nav db info` | Show the path, why it was chosen (dev/prod/override), its size, and set/entry counts. |
+
+```sh
+$ nav db info
+Database: /Users/me/Projects/navtool/.navtool.dev.db
+Source:   dev build (editable install)
+Size:     20.0 KB
+Sets:     3
+Entries:  6
+```
+
 ## Reserved Top-Level Words
 
 `shell/nav.sh` decides whether your first argument is a subcommand (`set`, `key`, `path`, `help`,

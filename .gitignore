@@ -35,3 +35,6 @@ Thumbs.db
 
 # Builds
 build/
+
+# Local dev database (created by editable/dev installs)
+.navtool.dev.db

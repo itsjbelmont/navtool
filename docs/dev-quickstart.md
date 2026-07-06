@@ -11,7 +11,11 @@ From the `navtool/` root directory: `source .venv/bin/activate`
 
 ## Get Started With The Dev Env
 
-_**NOTE:**_ For now the dev version and the stable installs both use the same directory path for the database file. This will likely change soon.
+_**NOTE:**_ The dev and production builds use **separate** database files, chosen automatically:
+
+* A dev (editable) build run from this checkout uses `<repo>/.navtool.dev.db` (gitignored).
+* An installed (pipx) build uses `~/.navtool.db`.
+* Set `NAVTOOL_DB=/path/to/some.db` to override either one explicitly (e.g. for experiments or tests).
 
 1. Create the `.venv/` virtual env folder: `python3 -m venv .venv`
 
