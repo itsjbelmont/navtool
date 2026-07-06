@@ -2,7 +2,10 @@
 
 This directory contains NavTool's test suite:
 
-- `test_db.py` — database schema and behavior (default set seeding, constraints, cascades).
+- `test_db.py` — database schema and behavior (the `nodes` tree: sibling uniqueness, foreign
+  keys, cascading subtree deletes).
+- `test_migrations.py` — schema versioning, the baseline migration, and rejection of newer or
+  pre-overhaul databases.
 - `test_cli.py` — command-level tests that invoke the CLI against a throwaway database.
 
 The CLI tests set `$NAVTOOL_DB` to a temporary file, so running them never touches your real
