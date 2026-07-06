@@ -43,7 +43,7 @@ command. Nested names are always addressed with a `:` path, so they never collid
 | `nav rm <name-path> [--yes/-y]` | Remove a name. Nested children are removed with it; prompts for confirmation when children exist unless `--yes`. |
 | `nav mv <name-path> [--to/-t PARENT] [--root] [--rename/-r NEW]` | Move a name under a new parent (`--to`) or to the top level (`--root`), and/or rename it (`--rename`). Rejects moves that would create a cycle. |
 | `nav update <name-path> <new-directory>` | Repoint an existing name at a new directory. |
-| `nav ls [<name-path>]` | List names as an indented tree. With a name path, list only that subtree. |
+| `nav ls [<name-path>] [-l/--level N]` | List names as an indented tree. With a name path, list only that subtree; `--level` caps the depth shown. |
 | `nav which [<directory>]` | Reverse lookup: show which name(s) point at a directory (defaults to the current directory). Exits non-zero if none do. |
 
 ## `nav db` — inspect the database
@@ -160,10 +160,18 @@ web -> /Users/me/code/web
 $ nav ls api
 api -> /Users/me/code/api
   tests -> /Users/me/code/api/tests
+
+$ nav ls --level 1        # top-level names only
+api -> /Users/me/code/api
+web -> /Users/me/code/web
 ```
 
 `nav ls` with no argument prints the whole tree; `nav ls <name>` prints just that name and its
 subtree.
+
+Use `-l`/`--level N` to cap how deep the tree is shown, counted from each listed root:
+`--level 1` shows only top-level names, `--level 2` adds their direct children, and so on. It
+combines with a name path, so `nav ls api --level 2` shows `api` and its immediate children.
 
 ### Finding the name(s) for a directory
 

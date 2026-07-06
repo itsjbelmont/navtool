@@ -217,6 +217,54 @@ def test_ls_subtree(run, tmp_path):
     assert "b ->" not in result.output
 
 
+@pytest.fixture
+def three_levels(run, tmp_path):
+    """proj{tests{unit}} plus a sibling top-level `other`."""
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(tmp_path))
+    run("add", "proj:tests:unit", str(tmp_path))
+    run("add", "other", str(tmp_path))
+
+
+def test_ls_level_1_shows_top_level_only(run, three_levels):
+    result = run("ls", "--level", "1")
+    assert result.exit_code == 0
+    assert "proj ->" in result.output
+    assert "other ->" in result.output
+    assert "tests ->" not in result.output
+    assert "unit ->" not in result.output
+
+
+def test_ls_level_2_shows_direct_children(run, three_levels):
+    result = run("ls", "--level", "2")
+    assert result.exit_code == 0
+    assert "proj ->" in result.output
+    assert "tests ->" in result.output  # direct child
+    assert "unit ->" not in result.output  # grandchild excluded
+
+
+def test_ls_no_level_shows_full_depth(run, three_levels):
+    result = run("ls")
+    assert result.exit_code == 0
+    assert "unit ->" in result.output
+
+
+def test_ls_level_with_subtree_counts_from_root(run, three_levels):
+    # --level is counted from the listed root, so `ls proj --level 1` shows only
+    # `proj`, and `--level 2` adds its direct child `tests`.
+    assert "tests ->" not in run("ls", "proj", "--level", "1").output
+    assert "tests ->" in run("ls", "proj", "--level", "2").output
+
+
+def test_ls_short_flag_l(run, three_levels):
+    assert "tests ->" not in run("ls", "-l", "1").output
+
+
+def test_ls_level_zero_rejected(run, three_levels):
+    result = run("ls", "--level", "0")
+    assert result.exit_code != 0
+
+
 # ----------------- which (reverse lookup) -----------------
 def test_which_finds_single_key(run, tmp_path):
     run("add", "proj", str(tmp_path))
