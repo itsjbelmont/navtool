@@ -13,7 +13,8 @@ NavTool has two parts:
 
 - **`navtool`** — a Python CLI (built with [Click](https://click.palletsprojects.com/)) that
   stores name/directory mappings as a tree in a SQLite database.
-- **`nav`** — a shell function ([shell/nav.sh](shell/nav.sh)) that wraps `navtool`. It runs the
+- **`nav`** — a shell function ([src/navtool/resources/shell/nav.sh](src/navtool/resources/shell/nav.sh))
+  that wraps `navtool`. It runs the
   actual `cd`, since a subprocess can't change its parent shell's directory.
 
 ## Requirements
@@ -36,27 +37,20 @@ NavTool has two parts:
    pipx install .
    ```
 
-3. Hook the `nav` function into your shell by sourcing [shell/nav.sh](shell/nav.sh) from your
-   shell's startup file (e.g. `~/.zshrc` or `~/.bashrc`):
+3. Hook the `nav` function (and tab-completion) into your shell:
 
    ```sh
-   source /path/to/navtool/shell/nav.sh
+   navtool bootstrap
    ```
 
-4. (Optional) Enable tab-completion by sourcing the script for your shell
-   *after* `nav.sh`:
+   This detects your shell from `$SHELL` and adds a single, managed line to its
+   startup file (`~/.zshrc`, `~/.bashrc`, …). It is safe to re-run — the block is
+   updated in place, never duplicated — and it backs up the file before editing.
+   Pass `--shell zsh` to be explicit, or `--dry-run` to preview the change.
 
-   ```sh
-   # ~/.zshrc  (compinit must already have run)
-   source /path/to/navtool/shell/completion.zsh
+4. Restart your terminals (or re-source your startup file).
 
-   # ~/.bashrc
-   source /path/to/navtool/shell/completion.bash
-   ```
-
-5. Restart your terminals (or re-source your startup file).
-
-6. Verify:
+5. Verify:
 
    ```sh
    which navtool     # -> ~/.local/bin/navtool
@@ -64,12 +58,26 @@ NavTool has two parts:
    nav <TAB>         # lists commands and top-level names
    ```
 
-To uninstall the CLI: `pipx uninstall navtool`.
+To uninstall the CLI: `pipx uninstall navtool` (and remove the `navtool` block
+from your startup file).
+
+### Manual setup (advanced)
+
+`navtool bootstrap` just writes one line that evaluates the packaged integration
+snippet. To wire it in yourself, add this to your startup file instead:
+
+```sh
+eval "$(navtool init zsh)"      # or: navtool init bash
+```
+
+Because the snippet ships inside the installed package, this keeps working even
+if the cloned repo is moved or deleted. Append `--no-completion` to either
+command to skip tab-completion.
 
 ## Tab-Completion
 
-Once the completion script is sourced (step 4 above), `<TAB>` completes both
-`nav` and `navtool`:
+Once the integration is set up (via `navtool bootstrap`, or manually), `<TAB>`
+completes both `nav` and `navtool`:
 
 ```sh
 $ nav <TAB>              # subcommands (add, rm, ls, …) + top-level names
@@ -137,6 +145,8 @@ $ nav ~/Downloads                       # not a name -> behaves like `cd ~/Downl
 | `nav which [<dir>]` | Show which name(s) point at a directory (default: current). |
 | `nav db path` / `info` / `schema` | Inspect the database file and schema. |
 | `nav path <name-path>` | Resolve a name to its path (used internally by `nav`). |
+| `navtool bootstrap [--shell N] [--dry-run]` | Set up the shell integration in your startup file. |
+| `navtool init <shell>` | Print the integration snippet (used by `bootstrap` / manual setup). |
 
 See [docs/cli-usage.md](docs/cli-usage.md) for the full command reference and examples.
 

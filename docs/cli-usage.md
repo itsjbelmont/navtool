@@ -3,7 +3,7 @@
 NavTool maps short names to directories so you can `cd` to them by name. Names form a **tree**:
 any name can have nested child names. This guide is the full command reference.
 
-The `navtool` CLI is invoked through the `nav` shell function (see [../shell/nav.sh](../shell/nav.sh)),
+The `navtool` CLI is invoked through the `nav` shell function (see [../src/navtool/resources/shell/nav.sh](../src/navtool/resources/shell/nav.sh)),
 which performs the actual `cd`. Commands that don't navigate can also be run as `navtool ...`
 directly.
 

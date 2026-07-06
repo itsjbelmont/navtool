@@ -17,7 +17,7 @@ dependencies = [
 where = ["src"]
 
 [tool.setuptools.package-data]
-"navtool" = ["resources/schema.sql"]
+"navtool" = ["resources/schema.sql", "resources/shell/*"]
 
 [project.optional-dependencies]
 dev = [

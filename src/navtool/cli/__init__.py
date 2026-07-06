@@ -13,6 +13,11 @@ from navtool.cli.config import resolve_db_path
 from navtool.db import (IncompatibleDatabaseError, NewerDatabaseError,
                         create_connection, migrate)
 
+# Subcommands that only emit shell configuration and never read the database.
+# They skip the connect/migrate step below — critical for `init`, which is
+# eval'd on every shell startup.
+DB_FREE_COMMANDS = {"init", "bootstrap"}
+
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
 @click.version_option(package_name="navtool", prog_name="navtool")
@@ -28,6 +33,11 @@ def cli(ctx):
     # runs; skip opening/migrating the DB so a TAB press stays cheap and can't
     # fail on a migration error. Completers open their own connections.
     if ctx.resilient_parsing:
+        return
+    # Setup commands emit shell config and never touch the database. `init` in
+    # particular is eval'd on every shell startup, so it must not create or
+    # migrate the DB (nor risk polluting its stdout with migration output).
+    if ctx.invoked_subcommand in DB_FREE_COMMANDS:
         return
     path = resolve_db_path()
     conn = create_connection(path)

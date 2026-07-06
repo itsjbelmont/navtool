@@ -42,26 +42,29 @@ directory is the repository root.
    If `which navtool` points elsewhere (e.g. `~/.local/bin/navtool`), an installed build is
    shadowing the dev one. Run `pipx uninstall navtool` to remove it.
 
-5. Ensure that the `./shell/nav.sh` script is sourced in your environment to hook the `nav` command into your shell.
-   To do this, source the script from your shell's startup file (e.g. `~/.zshrc` or `~/.bashrc`):
+5. Hook the `nav` function (and tab-completion) into your shell. The integration
+   snippet ships inside the package, so the same command works for the editable
+   dev build — add this to your startup file (e.g. `~/.zshrc` or `~/.bashrc`):
 
    ```sh
-   source <navtool_root>/shell/nav.sh
+   eval "$(navtool init zsh)"   # or: navtool init bash
    ```
 
-6. (Optional) Source the tab-completion script for your shell, after `nav.sh`:
+   Or let navtool edit the startup file for you (idempotent, backs up first):
 
    ```sh
-   source <navtool_root>/shell/completion.zsh   # or completion.bash
+   navtool bootstrap
    ```
+
+   Append `--no-completion` to either command to skip tab-completion.
 
 ## Tab-completion
 
 Completion for both `nav` and `navtool` is backed by a single hidden command,
 `navtool __complete` ([../src/navtool/cli/commands/complete.py](../src/navtool/cli/commands/complete.py)),
 so there is one code path instead of per-shell logic. The shell functions in
-[../shell/completion.zsh](../shell/completion.zsh) and
-[../shell/completion.bash](../shell/completion.bash) collect the words typed so
+[../src/navtool/resources/shell/completion.zsh](../src/navtool/resources/shell/completion.zsh) and
+[../src/navtool/resources/shell/completion.bash](../src/navtool/resources/shell/completion.bash) collect the words typed so
 far and call it; it drives Click's own completion engine (subcommands, options,
 directories) and, for the `nav` wrapper's first word, unions in navigable names.
 
@@ -73,6 +76,24 @@ never append a trailing `:` or space, so the user types the next separator.
 Directory arguments emit a sentinel that tells the wrapper to fall back to the
 shell's native path completion. Tests live in
 [../tests/test_completion.py](../tests/test_completion.py).
+
+## Shell integration (`init` / `bootstrap`)
+
+`navtool init <shell>` prints the integration snippet (the `nav` function plus
+completion) read from the packaged scripts under
+[../src/navtool/resources/shell/](../src/navtool/resources/shell/), and
+`navtool bootstrap` writes an `eval "$(navtool init …)"` line into the shell's
+startup file inside a sentinel-delimited, idempotent block. Both are DB-free —
+[../src/navtool/cli/__init__.py](../src/navtool/cli/__init__.py) skips the
+connect/migrate step for them, which matters because `init` is eval'd on every
+shell startup.
+
+All per-shell knowledge lives in one registry,
+[../src/navtool/cli/shells.py](../src/navtool/cli/shells.py). **To add a shell
+(e.g. PowerShell):** drop its resource script(s) under `resources/shell/`, add a
+`Shell(...)` entry to `SHELLS`, and — if its comment syntax isn't `#` — generalize
+the `BLOCK_BEGIN`/`BLOCK_END` markers. The `init`/`bootstrap` commands need no
+changes. Tests live in [../tests/test_bootstrap.py](../tests/test_bootstrap.py).
 
 ## Databases
 
