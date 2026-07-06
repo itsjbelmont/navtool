@@ -216,3 +216,108 @@ def test_path_default_and_qualified(run, tmp_path):
 def test_path_miss_exits_nonzero(run):
     result = run("path", "nonexistent")
     assert result.exit_code != 0
+
+
+# ----------------- set roots -----------------
+def test_set_add_with_root_navigable_by_name(run, tmp_path):
+    result = run("set", "add", "proj", "--root", str(tmp_path))
+    assert result.exit_code == 0
+    # `nav proj` resolves to the set's root even with no default keyword.
+    assert run("path", "proj").output.strip() == str(tmp_path)
+    # The `set:` form resolves the root too.
+    assert run("path", "proj:").output.strip() == str(tmp_path)
+
+
+def test_set_root_subcommand_sets_and_clears(run, tmp_path):
+    run("set", "add", "proj")
+    # No root yet -> not navigable by name.
+    assert run("path", "proj").exit_code != 0
+
+    assert run("set", "root", "proj", str(tmp_path)).exit_code == 0
+    assert run("path", "proj").output.strip() == str(tmp_path)
+
+    assert run("set", "root", "proj", "--clear").exit_code == 0
+    assert run("path", "proj").exit_code != 0
+    assert run("path", "proj:").exit_code != 0
+
+
+def test_set_update_root_and_clear_root(run, tmp_path):
+    sub = tmp_path / "sub"
+    sub.mkdir()
+    run("set", "add", "proj", "--root", str(tmp_path))
+
+    assert run("set", "update", "proj", "--root", str(sub)).exit_code == 0
+    assert run("path", "proj").output.strip() == str(sub)
+
+    assert run("set", "update", "proj", "--clear-root").exit_code == 0
+    assert run("path", "proj").exit_code != 0
+
+
+def test_set_root_rejects_missing_directory(run, tmp_path):
+    run("set", "add", "proj")
+    result = run("set", "root", "proj", str(tmp_path / "nope"))
+    assert result.exit_code != 0
+    assert "does not exist" in result.output
+
+
+def test_set_root_blocked_for_default(run, tmp_path):
+    result = run("set", "root", "default", str(tmp_path))
+    assert result.exit_code != 0
+    assert "cannot have a root" in result.output
+
+
+def test_set_show_displays_root(run, tmp_path):
+    run("set", "add", "proj", "--root", str(tmp_path))
+    result = run("set", "show", "proj")
+    assert result.exit_code == 0
+    assert f"root -> {tmp_path}" in result.output
+
+
+def test_default_keyword_shadows_set_root_impossible(run, tmp_path):
+    """A bare name resolves the default keyword; a same-named set is blocked."""
+    run("key", "add", "proj", str(tmp_path))
+    # A set named after an existing default keyword is refused.
+    result = run("set", "add", "proj", "--root", str(tmp_path))
+    assert result.exit_code != 0
+    assert "share a namespace" in result.output
+
+
+# ----------------- namespace collision guards -----------------
+def test_set_add_blocked_by_default_keyword(run, tmp_path):
+    run("key", "add", "proj", str(tmp_path))
+    result = run("set", "add", "proj")
+    assert result.exit_code != 0
+    assert "share a namespace" in result.output
+
+
+def test_default_key_add_blocked_by_set(run, tmp_path):
+    run("set", "add", "proj")
+    result = run("key", "add", "proj", str(tmp_path))
+    assert result.exit_code != 0
+    assert "share a namespace" in result.output
+
+
+def test_non_default_key_may_share_set_name(run, tmp_path):
+    """The guard is only about the default namespace; other sets are unaffected."""
+    run("set", "add", "proj")
+    run("set", "add", "other")
+    result = run("key", "add", "proj", str(tmp_path), "--set", "other")
+    assert result.exit_code == 0
+    assert run("path", "other:proj").output.strip() == str(tmp_path)
+
+
+def test_set_rename_blocked_by_default_keyword(run, tmp_path):
+    run("key", "add", "taken", str(tmp_path))
+    run("set", "add", "proj")
+    result = run("set", "update", "proj", "--rename", "taken")
+    assert result.exit_code != 0
+    assert "share a namespace" in result.output
+
+
+def test_key_move_to_default_blocked_by_set(run, tmp_path):
+    run("set", "add", "proj")
+    run("set", "add", "src")
+    run("key", "add", "proj", str(tmp_path), "--set", "src")
+    result = run("key", "move", "proj", "--from", "src", "--to", "default")
+    assert result.exit_code != 0
+    assert "share a namespace" in result.output

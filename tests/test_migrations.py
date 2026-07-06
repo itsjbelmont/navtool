@@ -110,6 +110,48 @@ def test_no_backup_for_fresh_db(tmp_path):
     assert list(tmp_path.glob("data.db.pre-migrate-*")) == []
 
 
+def test_migration_2_adds_root_column_preserving_data(tmp_path):
+    """A v1 database is upgraded to v2 with a `root` column and no data loss."""
+    db_path = str(tmp_path / "v1.db")
+    conn = sqlite3.connect(db_path)
+    # A v1-shaped database: sets/entries without a `root` column, stamped v1.
+    conn.executescript(
+        """
+        CREATE TABLE sets (set_name TEXT PRIMARY KEY, description TEXT);
+        CREATE TABLE entries (
+          set_name TEXT,
+          entry_key TEXT,
+          entry_value TEXT,
+          PRIMARY KEY (set_name, entry_key),
+          FOREIGN KEY (set_name) REFERENCES sets(set_name) ON DELETE CASCADE
+        );
+        INSERT INTO sets (set_name, description) VALUES ('default', NULL);
+        INSERT INTO sets (set_name, description) VALUES ('work', 'legacy');
+        INSERT INTO entries VALUES ('work', 'api', '/code/api');
+        """
+    )
+    _set_user_version(conn, 1)
+    conn.commit()
+    conn.close()
+
+    migrated = get_connection(db_path)
+    try:
+        assert _get_user_version(migrated) == SCHEMA_VERSION
+        columns = {
+            r[1] for r in migrated.execute("PRAGMA table_info(sets)").fetchall()
+        }
+        assert "root" in columns
+        # Existing rows preserved; root defaults to NULL.
+        assert migrated.execute(
+            "SELECT description, root FROM sets WHERE set_name='work'"
+        ).fetchone() == ("legacy", None)
+        assert migrated.execute(
+            "SELECT entry_value FROM entries WHERE set_name='work' AND entry_key='api'"
+        ).fetchone() == ("/code/api",)
+    finally:
+        migrated.close()
+
+
 def test_newer_database_is_rejected(tmp_path):
     db_path = str(tmp_path / "future.db")
     conn = create_connection(db_path)

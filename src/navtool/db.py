@@ -11,7 +11,7 @@ DEFAULT_SET = "default"
 
 # Current target schema version. Bump this (and add a migration below) whenever
 # the schema changes. Stored in each database via `PRAGMA user_version`.
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 # In-memory databases use this sentinel path and are never backed up.
 MEMORY_DB = ":memory:"
@@ -60,8 +60,20 @@ def _migration_1(conn: sqlite3.Connection) -> None:
         conn.executescript(f.read())
 
 
+def _migration_2(conn: sqlite3.Connection) -> None:
+    """
+    Add the `root` column to `sets` (v1 -> v2).
+
+    A set's ``root`` is an optional directory the set navigates to by its own
+    name, so ``nav myproject`` can jump to a project's top-level directory
+    without needing a keyword. NULL means the set has no root.
+    """
+    conn.execute("ALTER TABLE sets ADD COLUMN root TEXT")
+
+
 MIGRATIONS = {
     1: _migration_1,
+    2: _migration_2,
 }
 
 

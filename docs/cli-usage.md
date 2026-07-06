@@ -11,20 +11,31 @@ directly.
 
 - **Keyword** — a short name bound to a directory path.
 - **Set** — a named collection of keywords.
-- **`default` set** — always present; cannot be renamed or removed. Unqualified keywords resolve
-  against it: `nav <keyword>`.
+- **Set root** — an optional directory a set navigates to *by its own name*. If the set `myproject`
+  has a root, `nav myproject` jumps to it — no keyword needed. A set without a root is not
+  navigable by name.
+- **`default` set** — always present; cannot be renamed or removed and cannot have a root.
+  Unqualified keywords resolve against it: `nav <keyword>`.
 - **Qualified keyword** — `<set>:<keyword>` (e.g. `nav work:api`). Required for every set other
   than `default`. Because each set is reached only through its own qualifier, the same keyword
   name can exist in multiple sets.
+- **Shared namespace** — a bare `nav <name>` can resolve to either a `default` keyword or a set's
+  root, so a name may **not** exist as both. Creating a set whose name is already a `default`
+  keyword (or a `default` keyword whose name is already a set) is rejected.
 - `:` is reserved as the set/keyword delimiter and is rejected in set and keyword names.
 
 ## Navigation
 
 ```sh
 nav <keyword>            # cd to a keyword in the default set
+nav <set>                # cd to a set's root directory (if it has one)
 nav <set>:<keyword>      # cd to a keyword in a specific set
+nav <set>:               # cd to a set's root directory (explicit form)
 nav <path>               # not a keyword -> passed straight to cd
 ```
+
+A bare `nav <name>` resolves a `default` keyword first, then a set root. The `<set>:` form always
+targets the root, so it works even if a `default` keyword happens to share the name.
 
 When an argument doesn't resolve to a registered keyword, `nav` falls back to a plain `cd`, so
 `nav ../sibling` or `nav /some/path` behaves like `cd`.
@@ -37,11 +48,12 @@ in other sets are always qualified (`set:keyword`), so they never collide with c
 
 | Command | Description |
 |---|---|
-| `nav set list [--describe/-d]` | List all sets. `--describe` also prints each set's description. |
-| `nav set show <name>` | Show a set's description and every keyword entry (with its path). |
-| `nav set add <name> [--desc/-d TEXT]` | Create a new set. |
+| `nav set list [--describe/-d]` | List all sets. `--describe` also prints each set's description and root. |
+| `nav set show <name>` | Show a set's description, root, and every keyword entry (with its path). |
+| `nav set add <name> [--desc/-d TEXT] [--root/-r DIR]` | Create a new set, optionally with a root directory. |
 | `nav set remove <name> [--yes/-y]` | Delete a set and all its keys. Prompts for confirmation unless `--yes`. Blocked for `default`. |
-| `nav set update <name> [--rename NEW_NAME] [--desc/-d TEXT]` | Rename a set and/or change its description. Blocked for `default`. |
+| `nav set update <name> [--rename NEW_NAME] [--desc/-d TEXT] [--root/-r DIR] [--clear-root]` | Rename a set and/or change its description or root. Blocked for `default`. |
+| `nav set root <name> <directory>` / `nav set root <name> --clear` | Set, change, or clear a set's root directory. Blocked for `default`. |
 
 ## `nav key` — manage keyword entries
 
@@ -77,9 +89,9 @@ version; the two are tracked separately — see [dev-quickstart.md](dev-quicksta
 
 ## `nav path` — resolve a keyword
 
-`nav path <keyword>` (or `nav path <set>:<keyword>`) prints the absolute path a keyword resolves
-to, and exits non-zero if nothing matches. The `nav` shell function calls this internally and
-falls back to `cd` on a non-zero exit.
+`nav path <keyword>` (or `nav path <set>:<keyword>`, or `nav path <set>:` for a set root) prints
+the absolute path a query resolves to, and exits non-zero if nothing matches. The `nav` shell
+function calls this internally and falls back to `cd` on a non-zero exit.
 
 ## Examples
 
@@ -114,6 +126,47 @@ $ nav work:api
 # now in /Users/me/code/api
 ```
 
+### Set roots — navigating to a set by its name
+
+Give a set a root so its name works like a keyword, without registering one:
+
+```sh
+$ nav set add myproject --root ~/projects/myproject --desc "main project"
+Created set: myproject - main project
+  root -> /Users/me/projects/myproject
+
+$ nav myproject
+# now in /Users/me/projects/myproject   (no default:myproject keyword needed)
+
+$ nav myproject:            # explicit root form
+# now in /Users/me/projects/myproject
+
+# keywords inside the set still resolve as usual
+$ nav key add api ~/projects/myproject/api --set myproject
+$ nav myproject:api
+# now in /Users/me/projects/myproject/api
+```
+
+Add, change, or clear a root on an existing set:
+
+```sh
+$ nav set root myproject ~/projects/myproject-v2   # via the shortcut command
+Set root for 'myproject' -> /Users/me/projects/myproject-v2
+
+$ nav set update myproject --clear-root            # or via update flags
+Cleared root for set 'myproject'
+```
+
+A set name and a `default` keyword share one namespace, so navtool refuses to create a set named
+after an existing `default` keyword (and vice versa):
+
+```sh
+$ nav key add myproject ~/somewhere
+$ nav set add myproject
+Error: Cannot use set name 'myproject': a keyword 'myproject' already exists in the 'default' set.
+Sets and default keywords share a namespace.
+```
+
 ### Reusing a keyword across sets
 
 ```sh
@@ -145,6 +198,8 @@ Moved 'api' -> '/Users/me/code/api' from set 'work' to set 'archive'
 ```sh
 $ nav set list --describe
 default – (no description)
+myproject – main project
+  root -> /Users/me/projects/myproject
 work – work project shortcuts
 personal – (no description)
 
@@ -185,7 +240,7 @@ $ nav db info
 Database: /Users/me/.navtool.db
 Source:   prod build (installed)
 Size:     20.0 KB
-Schema:   version 1 (up to date)
+Schema:   version 2 (up to date)
 NavTool:  0.1.0
 Sets:     3
 Entries:  4

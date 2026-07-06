@@ -79,6 +79,22 @@ $ nav work:api                          # cd to ~/code/api
 Because each non-`default` set is only reached through its own qualifier, the same keyword name
 can be reused across sets without collision (`work:api`, `personal:api`, etc.).
 
+### Set roots
+
+A set can also have a **root** directory, so its *name* navigates like a keyword — handy for a
+project you jump to often without registering a keyword for it:
+
+```sh
+$ nav set add myproject --root ~/projects/myproject
+$ nav myproject                         # cd to ~/projects/myproject
+$ nav myproject:                        # explicit root form
+$ nav set root myproject ~/projects/v2  # change it later ( --clear to remove )
+```
+
+A bare `nav <name>` resolves a `default` keyword first, then a set root. Because both share one
+namespace, a name can't exist as both — navtool rejects a set named after a `default` keyword and
+vice versa. The `default` set itself can't have a root.
+
 ### Falling through to `cd`
 
 If an argument doesn't resolve to a registered keyword, `nav` passes it straight to `cd`, so it
@@ -92,8 +108,8 @@ $ nav ~/Downloads                       # not a keyword -> behaves like `cd ~/Do
 
 | Command | Purpose |
 |---|---|
-| `nav <keyword>` / `nav <set>:<keyword>` | Navigate to a registered directory. |
-| `nav set list` / `show` / `add` / `remove` / `update` | Manage sets. |
+| `nav <keyword>` / `nav <set>` / `nav <set>:<keyword>` | Navigate to a registered directory or a set's root. |
+| `nav set list` / `show` / `add` / `remove` / `update` / `root` | Manage sets (including their root directory). |
 | `nav key list` / `add` / `remove` / `update` / `move` | Manage keyword entries. |
 | `nav db path` / `info` | Inspect the database file in use. |
 | `nav path <keyword>` | Resolve a keyword to its path (used internally by `nav`). |
