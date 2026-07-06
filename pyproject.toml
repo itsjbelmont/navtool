@@ -1,0 +1,30 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "navtool"
+version = "0.1.0"
+description = "Navigate directories by registering directories into key/value sets"
+readme = "README.md"
+authors = [{name = "Jack Belmont", email = "jackbelmont8@gmail.com"}]
+requires-python = ">=3.10"
+dependencies = [
+  "click>=8.3.1"
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"navtool" = ["resources/schema.sql"]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "black>=24.0",
+    "isort>=6.0"
+]
+
+[project.scripts]
+navtool = "navtool.cli:cli"
