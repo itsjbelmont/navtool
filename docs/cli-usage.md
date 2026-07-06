@@ -1,7 +1,7 @@
 # NavTool CLI Usage
 
-NavTool maps short keywords to directories so you can `cd` to them by name. Keywords are grouped
-into **sets**. This guide is the full command reference.
+NavTool maps short names to directories so you can `cd` to them by name. Names form a **tree**:
+any name can have nested child names. This guide is the full command reference.
 
 The `navtool` CLI is invoked through the `nav` shell function (see [../shell/nav.sh](../shell/nav.sh)),
 which performs the actual `cd`. Commands that don't navigate can also be run as `navtool ...`
@@ -9,49 +9,42 @@ directly.
 
 ## Concepts
 
-- **Keyword** — a short name bound to a directory path.
-- **Set** — a named collection of keywords.
-- **`default` set** — always present; cannot be renamed or removed. Unqualified keywords resolve
-  against it: `nav <keyword>`.
-- **Qualified keyword** — `<set>:<keyword>` (e.g. `nav work:api`). Required for every set other
-  than `default`. Because each set is reached only through its own qualifier, the same keyword
-  name can exist in multiple sets.
-- `:` is reserved as the set/keyword delimiter and is rejected in set and keyword names.
+- **Name** — a short label bound to a directory path.
+- **Name path** — a name addressed within the tree by joining names with `:`, e.g.
+  `myproj:tests:unit`. A bare name (no `:`) addresses a **top-level** name.
+- **Tree** — every name is a node with an optional parent. A name with children is just a name
+  other names point at as their parent; there is no separate "set" or "group" concept.
+- **Top-level names are unambiguous** — a bare `nav <name>` only ever matches a top-level name, and
+  top-level names are unique. Nested names are reached by their full path (`parent:child`), so the
+  same child name can be reused under different parents.
+- `:` is reserved as the path delimiter and is rejected inside individual names.
 
 ## Navigation
 
 ```sh
-nav <keyword>            # cd to a keyword in the default set
-nav <set>:<keyword>      # cd to a keyword in a specific set
-nav <path>               # not a keyword -> passed straight to cd
+nav <name>               # cd to a top-level name
+nav <a>:<b>:<c>          # cd to a nested name, walking the tree
+nav <name>:              # trailing colon is tolerated -> the name itself
+nav <path>               # not a name -> passed straight to cd
 ```
 
-When an argument doesn't resolve to a registered keyword, `nav` falls back to a plain `cd`, so
+When an argument doesn't resolve to a registered name, `nav` falls back to a plain `cd`, so
 `nav ../sibling` or `nav /some/path` behaves like `cd`.
 
-Because the shell function treats the first word as a subcommand when it matches one (`set`, `key`,
-`db`, `path`), a `default`-set keyword should not share a name with a top-level command. Keywords
-in other sets are always qualified (`set:keyword`), so they never collide with command names.
+Because the shell function treats the first word as a subcommand when it matches one (`add`, `rm`,
+`mv`, `update`, `ls`, `which`, `db`, `path`), a top-level name should not share a name with a
+command. Nested names are always addressed with a `:` path, so they never collide with commands.
 
-## `nav set` — manage sets
-
-| Command | Description |
-|---|---|
-| `nav set list [--describe/-d]` | List all sets. `--describe` also prints each set's description. |
-| `nav set show <name>` | Show a set's description and every keyword entry (with its path). |
-| `nav set add <name> [--desc/-d TEXT]` | Create a new set. |
-| `nav set remove <name> [--yes/-y]` | Delete a set and all its keys. Prompts for confirmation unless `--yes`. Blocked for `default`. |
-| `nav set update <name> [--rename NEW_NAME] [--desc/-d TEXT]` | Rename a set and/or change its description. Blocked for `default`. |
-
-## `nav key` — manage keyword entries
+## Managing names
 
 | Command | Description |
 |---|---|
-| `nav key list [--set/-s SET_NAME]` | List keywords grouped by set. With `--set`, list only that set. |
-| `nav key add <keyword> <directory> [--set/-s SET_NAME]` | Register a keyword. Defaults to the `default` set. The directory must exist. |
-| `nav key remove <keyword> [--set/-s SET_NAME]` | Remove a keyword. Defaults to `default`. |
-| `nav key update <keyword> <new-directory> [--set/-s SET_NAME]` | Point an existing keyword at a new directory. Defaults to `default`. |
-| `nav key move <keyword> --to/-t SET_NAME [--from/-f SET_NAME]` | Move a keyword (and its path) between sets. `--from` defaults to `default`. |
+| `nav add <name-path> <directory>` | Register a name pointing at a directory. A bare name is top-level; a `parent:name` path nests it under an existing parent. The directory must exist. |
+| `nav rm <name-path> [--yes/-y]` | Remove a name. Nested children are removed with it; prompts for confirmation when children exist unless `--yes`. |
+| `nav mv <name-path> [--to/-t PARENT] [--root] [--rename/-r NEW]` | Move a name under a new parent (`--to`) or to the top level (`--root`), and/or rename it (`--rename`). Rejects moves that would create a cycle. |
+| `nav update <name-path> <new-directory>` | Repoint an existing name at a new directory. |
+| `nav ls [<name-path>]` | List names as an indented tree. With a name path, list only that subtree. |
+| `nav which [<directory>]` | Reverse lookup: show which name(s) point at a directory (defaults to the current directory). Exits non-zero if none do. |
 
 ## `nav db` — inspect the database
 
@@ -62,131 +55,159 @@ both.
 | Command | Description |
 |---|---|
 | `nav db path` | Print the path of the database file in use. |
-| `nav db info` | Show the path, why it was chosen (dev/prod/override), size, schema/app version, and set/entry counts. |
+| `nav db info` | Show the path, why it was chosen (dev/prod/override), size, schema/app version, and node counts. |
+| `nav db schema` | Print the current database schema, generated from the migration chain (never hand-maintained, so it can't drift). |
 | `nav db migrate` | Apply any pending schema migrations and report the result. Migrations also run automatically on connect, so this is mainly an explicit control point. |
 
 The database is versioned with SQLite's `PRAGMA user_version`. When navtool opens a database that
 is behind the current schema, it first writes a timestamped `*.pre-migrate-*` backup next to the
-file, then applies the pending migrations. A database created by a *newer* navtool than the one
-you're running is refused with a clear error.
+file, then applies the pending migrations. A database created by a *newer* navtool is refused, and
+a pre-overhaul database (from the old set/key model) is rejected with instructions to delete it.
 
 ## `nav --version`
 
-`nav --version` prints the installed navtool version. (Set/keyword/database data is unaffected by
+`nav --version` prints the installed navtool version. (Name/database data is unaffected by
 version; the two are tracked separately — see [dev-quickstart.md](dev-quickstart.md).)
 
-## `nav path` — resolve a keyword
+## `nav path` — resolve a name
 
-`nav path <keyword>` (or `nav path <set>:<keyword>`) prints the absolute path a keyword resolves
-to, and exits non-zero if nothing matches. The `nav` shell function calls this internally and
-falls back to `cd` on a non-zero exit.
+`nav path <name-path>` prints the absolute path a name resolves to, and exits non-zero if nothing
+matches. The `nav` shell function calls this internally and falls back to `cd` on a non-zero exit.
 
 ## Examples
 
-### Everyday keywords (default set)
+### Everyday names
 
 ```sh
-$ cd ~/Projects/navtool
-$ nav key add navtool .
-Registered 'navtool' -> '/Users/me/Projects/navtool' in set 'default'
+$ cd ~/projects/myproj
+$ nav add myproj .
+Added 'myproj' -> /Users/me/projects/myproj
 
 $ cd /somewhere/else
-$ nav navtool
-# now in /Users/me/Projects/navtool
+$ nav myproj
+# now in /Users/me/projects/myproj
 
-$ nav key update navtool ~/Projects/navtool-v2
-Updated 'navtool' -> '/Users/me/Projects/navtool-v2' in set 'default'
+$ nav update myproj ~/projects/myproj-v2
+Updated 'myproj' -> /Users/me/projects/myproj-v2
 
-$ nav key remove navtool
-Removed 'navtool' from set 'default'
+$ nav rm myproj
+Removed 'myproj'
 ```
 
-### Project set
+### Nesting names under a project
+
+The parent must already exist. Nest as deep as you like:
 
 ```sh
-$ nav set add work --desc "work project shortcuts"
-Created set: work - work project shortcuts
+$ nav add myproj ~/projects/myproj
+Added 'myproj' -> /Users/me/projects/myproj
 
-$ nav key add api ~/code/api --set work
-Registered 'api' -> '/Users/me/code/api' in set 'work'
+$ nav add myproj:tests ~/projects/myproj/tests
+Added 'myproj:tests' -> /Users/me/projects/myproj/tests
 
-$ nav work:api
-# now in /Users/me/code/api
+$ nav add myproj:tests:unit ~/projects/myproj/tests/unit
+Added 'myproj:tests:unit' -> /Users/me/projects/myproj/tests/unit
+
+$ nav myproj:tests        # cd to ~/projects/myproj/tests
+$ nav myproj              # cd to ~/projects/myproj
 ```
 
-### Reusing a keyword across sets
+### Reusing a name under different parents
+
+A bare name only matches the top level, so nested names never clash with each other:
 
 ```sh
-$ nav key add api ~/code/other-api --set personal
-Registered 'api' -> '/Users/me/code/other-api' in set 'personal'
+$ nav add api ~/code/api
+$ nav add api:tests ~/code/api/tests
+$ nav add web ~/code/web
+$ nav add web:tests ~/code/web/tests
 
-$ nav work:api        # /Users/me/code/api
-$ nav personal:api    # /Users/me/code/other-api
+$ nav api:tests        # /Users/me/code/api/tests
+$ nav web:tests        # /Users/me/code/web/tests
 ```
 
-### Moving a keyword between sets
-
-`--from` defaults to `default`, so moving out of `default` only needs `--to`. Moving between two
-non-default sets needs both. A move fails if the destination already has a keyword with that name.
+### Moving and renaming
 
 ```sh
-$ nav key add scratch ~/code/api/tmp
-Registered 'scratch' -> '/Users/me/code/api/tmp' in set 'default'
+$ nav add scratch ~/code/api/tmp
+Added 'scratch' -> /Users/me/code/api/tmp
 
-$ nav key move scratch --to work
-Moved 'scratch' -> '/Users/me/code/api/tmp' from set 'default' to set 'work'
+# Nest an existing top-level name under a parent:
+$ nav mv scratch --to api
+Moved 'scratch' -> 'scratch' under 'api'
 
-$ nav key move api --from work --to archive
-Moved 'api' -> '/Users/me/code/api' from set 'work' to set 'archive'
+# Rename it:
+$ nav mv api:scratch --rename tmp
+Moved 'api:scratch' -> 'tmp'
+
+# Promote a nested name back to the top level:
+$ nav mv api:tmp --root
+Moved 'api:tmp' -> 'tmp' to the top level
 ```
+
+A move is rejected if it would create a cycle (moving a name under one of its own descendants) or
+if the destination already has a child with that name.
 
 ### Listing
 
 ```sh
-$ nav set list --describe
-default – (no description)
-work – work project shortcuts
-personal – (no description)
+$ nav ls
+api -> /Users/me/code/api
+  tests -> /Users/me/code/api/tests
+web -> /Users/me/code/web
+  tests -> /Users/me/code/web/tests
 
-$ nav key list
-default:
-  (no entries)
-work:
-  api -> /Users/me/code/api
-personal:
-  api -> /Users/me/code/other-api
-
-$ nav set show work
-work: work project shortcuts
-  api -> /Users/me/code/api
+$ nav ls api
+api -> /Users/me/code/api
+  tests -> /Users/me/code/api/tests
 ```
 
-`nav set show <name>` and `nav key list --set <name>` return the same entries. `set show` also
-prints the set's description; `key list` can list every set at once.
+`nav ls` with no argument prints the whole tree; `nav ls <name>` prints just that name and its
+subtree.
 
-### Renaming and removing sets
+### Finding the name(s) for a directory
+
+`nav which` is the reverse of navigation: given a directory, it prints the name path(s) that point
+at it. With no argument it checks the current directory. The directory is normalized the same way
+`add` normalizes it (expanding `~`, resolving symlinks and trailing slashes), so it matches
+regardless of how you spell it. More than one name can point at the same directory, and all are
+listed:
 
 ```sh
-$ nav set update work --rename w
-Renamed set 'work' -> 'w'
+$ nav which ~/code/api
+api
 
-$ nav w:api
-# now in /Users/me/code/api
+$ cd ~/code/api/tests
+$ nav which
+api:tests
 
-$ nav set remove personal
-Are you sure you want to delete the set 'personal'? [y/N]: y
-Deleted the 'personal' set.
+$ nav which ~/not/registered
+No name points at /Users/me/not/registered      # exits non-zero
+```
+
+### Removing a subtree
+
+```sh
+$ nav rm api
+'api' has 1 nested entry that will also be removed. Continue? [y/N]: y
+Removed 'api' and 1 nested entry
 ```
 
 ### Inspecting the database
 
 ```sh
 $ nav db info
-Database: /Users/me/.navtool.db
-Source:   prod build (installed)
-Size:     20.0 KB
-Schema:   version 1 (up to date)
-NavTool:  0.1.0
-Sets:     3
-Entries:  4
+Database:  /Users/me/.navtool.db
+Source:    prod build (installed)
+Size:      20.0 KB
+Schema:    version 1 (up to date)
+NavTool:   0.1.0
+Nodes:     4
+Top-level: 2
+
+$ nav db schema
+CREATE TABLE nodes (
+  id         INTEGER PRIMARY KEY,
+  ...
+);
 ```

@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "navtool"
 version = "0.1.0"
-description = "Navigate directories by registering directories into key/value sets"
+description = "Navigate directories by mapping short names to them in a tree"
 readme = "README.md"
 authors = [{name = "Jack Belmont", email = "jackbelmont8@gmail.com"}]
 requires-python = ">=3.10"

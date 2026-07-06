@@ -24,139 +24,248 @@ def run(runner):
     return _run
 
 
-# ----------------- default set / bootstrapping -----------------
-def test_default_set_present_on_first_run(run):
-    result = run("set", "list")
+# ----------------- bootstrapping -----------------
+def test_empty_ls_on_first_run(run):
+    result = run("ls")
     assert result.exit_code == 0
-    assert "default" in result.output
-
-
-# ----------------- set management -----------------
-def test_set_add_and_show(run):
-    assert run("set", "add", "proj", "--desc", "my project").exit_code == 0
-
-    result = run("set", "show", "proj")
-    assert result.exit_code == 0
-    assert "proj: my project" in result.output
     assert "(no entries)" in result.output
 
 
-def test_set_add_rejects_duplicate(run):
-    run("set", "add", "proj")
-    result = run("set", "add", "proj")
-    assert result.exit_code != 0
-    assert "already exists" in result.output
-
-
-def test_set_add_rejects_colon(run):
-    result = run("set", "add", "a:b")
-    assert result.exit_code != 0
-    assert "reserved" in result.output
-
-
-def test_set_remove_blocked_for_default(run):
-    result = run("set", "remove", "default", "--yes")
-    assert result.exit_code != 0
-    assert "cannot be removed" in result.output
-
-
-def test_set_remove_with_yes(run):
-    run("set", "add", "proj")
-    result = run("set", "remove", "proj", "--yes")
+# ----------------- add -----------------
+def test_add_top_level_and_navigate(run, tmp_path):
+    result = run("add", "proj", str(tmp_path))
     assert result.exit_code == 0
-    assert "Deleted" in result.output
-    assert "proj" not in run("set", "list").output
-
-
-def test_set_update_rename_moves_keys(run, tmp_path):
-    run("set", "add", "proj")
-    run("key", "add", "here", str(tmp_path), "--set", "proj")
-
-    result = run("set", "update", "proj", "--rename", "nt")
-    assert result.exit_code == 0
-
-    # Old qualifier gone, new qualifier resolves.
-    assert run("path", "proj:here").exit_code != 0
-    assert run("path", "nt:here").output.strip() == str(tmp_path)
-
-
-def test_set_update_default_blocked(run):
-    result = run("set", "update", "default", "--desc", "nope")
-    assert result.exit_code != 0
-    assert "cannot be modified" in result.output
-
-
-# ----------------- key management -----------------
-def test_key_add_defaults_to_default_set(run, tmp_path):
-    result = run("key", "add", "proj", str(tmp_path))
-    assert result.exit_code == 0
-    assert "in set 'default'" in result.output
     assert run("path", "proj").output.strip() == str(tmp_path)
 
 
-def test_key_add_rejects_missing_directory(run, tmp_path):
-    result = run("key", "add", "proj", str(tmp_path / "nope"))
+def test_add_nested_under_parent(run, tmp_path):
+    sub = tmp_path / "tests"
+    sub.mkdir()
+    run("add", "proj", str(tmp_path))
+    result = run("add", "proj:tests", str(sub))
+    assert result.exit_code == 0
+    assert run("path", "proj:tests").output.strip() == str(sub)
+
+
+def test_add_deeply_nested(run, tmp_path):
+    a = tmp_path / "a"
+    b = a / "b"
+    b.mkdir(parents=True)
+    run("add", "a", str(a))
+    run("add", "a:b", str(b))
+    result = run("add", "a:b:c", str(b))
+    assert result.exit_code == 0
+    assert run("path", "a:b:c").output.strip() == str(b)
+
+
+def test_add_missing_parent_rejected(run, tmp_path):
+    result = run("add", "ghost:child", str(tmp_path))
     assert result.exit_code != 0
     assert "does not exist" in result.output
 
 
-def test_key_add_duplicate_in_set(run, tmp_path):
-    run("key", "add", "proj", str(tmp_path))
-    result = run("key", "add", "proj", str(tmp_path))
+def test_add_duplicate_sibling_rejected(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    result = run("add", "proj", str(tmp_path))
     assert result.exit_code != 0
     assert "already exists" in result.output
 
 
-def test_key_remove(run, tmp_path):
-    run("key", "add", "proj", str(tmp_path))
-    assert run("key", "remove", "proj").exit_code == 0
+def test_add_rejects_missing_directory(run, tmp_path):
+    result = run("add", "proj", str(tmp_path / "nope"))
+    assert result.exit_code != 0
+    assert "Directory does not exist" in result.output
+
+
+def test_same_name_under_different_parents(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    run("add", "b", str(tmp_path))
+    assert run("add", "a:tests", str(tmp_path)).exit_code == 0
+    assert run("add", "b:tests", str(tmp_path)).exit_code == 0
+
+
+# ----------------- path resolution -----------------
+def test_path_trailing_colon_resolves_node(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    assert run("path", "proj:").output.strip() == str(tmp_path)
+
+
+def test_path_miss_exits_nonzero(run):
+    assert run("path", "nonexistent").exit_code != 0
+    assert run("path", "a:b:c").exit_code != 0
+
+
+def test_bare_name_does_not_match_nested(run, tmp_path):
+    """A nested name is not reachable as a bare top-level name."""
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(tmp_path))
+    assert run("path", "tests").exit_code != 0
+    assert run("path", "proj:tests").exit_code == 0
+
+
+# ----------------- rm -----------------
+def test_rm_leaf(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    assert run("rm", "proj").exit_code == 0
     assert run("path", "proj").exit_code != 0
 
 
-def test_key_remove_missing(run):
-    result = run("key", "remove", "ghost")
+def test_rm_missing(run):
+    result = run("rm", "ghost")
     assert result.exit_code != 0
-    assert "No keyword" in result.output
+    assert "does not exist" in result.output
 
 
-def test_key_update_repoints(run, tmp_path):
+def test_rm_with_children_prompts_and_declines(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(tmp_path))
+    result = run("rm", "proj", input="n\n")
+    assert result.exit_code == 0
+    assert "cancelled" in result.output.lower()
+    # Nothing removed.
+    assert run("path", "proj:tests").exit_code == 0
+
+
+def test_rm_cascades_with_yes(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(tmp_path))
+    run("add", "proj:tests:unit", str(tmp_path))
+    result = run("rm", "proj", "--yes")
+    assert result.exit_code == 0
+    assert "2 nested" in result.output
+    assert run("path", "proj").exit_code != 0
+    assert run("path", "proj:tests").exit_code != 0
+
+
+# ----------------- mv -----------------
+def test_mv_rename(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    assert run("mv", "proj", "--rename", "p").exit_code == 0
+    assert run("path", "p").output.strip() == str(tmp_path)
+    assert run("path", "proj").exit_code != 0
+
+
+def test_mv_reparent(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    run("add", "b", str(tmp_path))
+    run("add", "a:child", str(tmp_path))
+    assert run("mv", "a:child", "--to", "b").exit_code == 0
+    assert run("path", "b:child").output.strip() == str(tmp_path)
+    assert run("path", "a:child").exit_code != 0
+
+
+def test_mv_to_root(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    run("add", "a:child", str(tmp_path))
+    assert run("mv", "a:child", "--root").exit_code == 0
+    assert run("path", "child").output.strip() == str(tmp_path)
+
+
+def test_mv_cycle_rejected(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    run("add", "a:b", str(tmp_path))
+    # Cannot move `a` under its own descendant `a:b`.
+    result = run("mv", "a", "--to", "a:b")
+    assert result.exit_code != 0
+    assert "descendant" in result.output
+
+
+def test_mv_destination_collision_rejected(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    run("add", "b", str(tmp_path))
+    run("add", "a:x", str(tmp_path))
+    run("add", "b:x", str(tmp_path))
+    result = run("mv", "a:x", "--to", "b")
+    assert result.exit_code != 0
+    assert "already exists" in result.output
+
+
+def test_mv_to_and_root_conflict(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    result = run("mv", "a", "--to", "a", "--root")
+    assert result.exit_code != 0
+    assert "not both" in result.output
+
+
+# ----------------- update -----------------
+def test_update_repoints(run, tmp_path):
     sub = tmp_path / "sub"
     sub.mkdir()
-    run("key", "add", "proj", str(tmp_path))
-    assert run("key", "update", "proj", str(sub)).exit_code == 0
+    run("add", "proj", str(tmp_path))
+    assert run("update", "proj", str(sub)).exit_code == 0
     assert run("path", "proj").output.strip() == str(sub)
 
 
-# ----------------- key move -----------------
-def test_key_move_from_default(run, tmp_path):
-    run("set", "add", "proj")
-    run("key", "add", "scratch", str(tmp_path))
-
-    result = run("key", "move", "scratch", "--to", "proj")
+# ----------------- ls -----------------
+def test_ls_renders_tree(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(tmp_path))
+    result = run("ls")
     assert result.exit_code == 0
+    assert "proj" in result.output
+    assert "tests" in result.output
 
-    assert run("path", "scratch").exit_code != 0
-    assert run("path", "proj:scratch").output.strip() == str(tmp_path)
 
-
-def test_key_move_between_sets(run, tmp_path):
-    run("set", "add", "a")
-    run("set", "add", "b")
-    run("key", "add", "k", str(tmp_path), "--set", "a")
-
-    result = run("key", "move", "k", "--from", "a", "--to", "b")
+def test_ls_subtree(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    run("add", "a:child", str(tmp_path))
+    run("add", "b", str(tmp_path))
+    result = run("ls", "a")
     assert result.exit_code == 0
-    assert run("path", "b:k").output.strip() == str(tmp_path)
+    assert "child ->" in result.output
+    # The sibling top-level node `b` is outside the requested subtree.
+    assert "b ->" not in result.output
 
 
-def test_key_move_collision_rejected(run, tmp_path):
-    run("set", "add", "proj")
-    run("key", "add", "k", str(tmp_path))
-    run("key", "add", "k", str(tmp_path), "--set", "proj")
+# ----------------- which (reverse lookup) -----------------
+def test_which_finds_single_key(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    result = run("which", str(tmp_path))
+    assert result.exit_code == 0
+    assert result.output.strip() == "proj"
 
-    result = run("key", "move", "k", "--to", "proj")
+
+def test_which_returns_full_name_path_for_nested(run, tmp_path):
+    sub = tmp_path / "tests"
+    sub.mkdir()
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(sub))
+    result = run("which", str(sub))
+    assert result.exit_code == 0
+    assert result.output.strip() == "proj:tests"
+
+
+def test_which_lists_all_matching_keys(run, tmp_path):
+    run("add", "a", str(tmp_path))
+    run("add", "b", str(tmp_path))  # same directory, second key
+    result = run("which", str(tmp_path))
+    assert result.exit_code == 0
+    assert result.output.split() == ["a", "b"]
+
+
+def test_which_exits_nonzero_when_unkeyed(run, tmp_path):
+    result = run("which", str(tmp_path))
     assert result.exit_code != 0
-    assert "already exists" in result.output
+    assert "No name points at" in result.output
+
+
+def test_which_normalizes_trailing_slash_and_tilde(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    # A trailing slash resolves to the same normalized path.
+    result = run("which", str(tmp_path) + "/")
+    assert result.exit_code == 0
+    assert result.output.strip() == "proj"
+
+
+def test_which_defaults_to_cwd(runner, tmp_path, monkeypatch):
+    from navtool.cli import cli
+
+    run_add = runner.invoke(cli, ["add", "here", str(tmp_path)])
+    assert run_add.exit_code == 0
+    monkeypatch.chdir(tmp_path)
+    result = runner.invoke(cli, ["which"])
+    assert result.exit_code == 0
+    assert result.output.strip() == "here"
 
 
 # ----------------- db group -----------------
@@ -166,17 +275,15 @@ def test_db_path_matches_env_override(run, tmp_path):
     assert result.output.strip() == str(tmp_path / "navtool.db")
 
 
-def test_db_info_reports_override_and_counts(run, tmp_path):
-    run("set", "add", "proj")
-    run("key", "add", "k", str(tmp_path), "--set", "proj")
-
+def test_db_info_reports_counts(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(tmp_path))
     result = run("db", "info")
     assert result.exit_code == 0
     assert str(tmp_path / "navtool.db") in result.output
     assert "override via $NAVTOOL_DB" in result.output
-    # default + proj = 2 sets, 1 entry
-    assert "Sets:     2" in result.output
-    assert "Entries:  1" in result.output
+    assert "Nodes:     2" in result.output
+    assert "Top-level: 1" in result.output
 
 
 def test_db_info_reports_schema_version(run):
@@ -188,9 +295,14 @@ def test_db_info_reports_schema_version(run):
     assert "NavTool:" in result.output
 
 
+def test_db_schema_dumps_nodes_table(run):
+    result = run("db", "schema")
+    assert result.exit_code == 0
+    assert "CREATE TABLE" in result.output
+    assert "nodes" in result.output
+
+
 def test_db_migrate_reports_up_to_date(run):
-    # The DB is created (and migrated) on the first command, so a later explicit
-    # migrate reports it is already current.
     run("db", "info")
     result = run("db", "migrate")
     assert result.exit_code == 0
@@ -201,18 +313,3 @@ def test_version_flag(run):
     result = run("--version")
     assert result.exit_code == 0
     assert "navtool" in result.output.lower()
-
-
-# ----------------- path resolution -----------------
-def test_path_default_and_qualified(run, tmp_path):
-    run("set", "add", "proj")
-    run("key", "add", "d", str(tmp_path))
-    run("key", "add", "p", str(tmp_path), "--set", "proj")
-
-    assert run("path", "d").output.strip() == str(tmp_path)
-    assert run("path", "proj:p").output.strip() == str(tmp_path)
-
-
-def test_path_miss_exits_nonzero(run):
-    result = run("path", "nonexistent")
-    assert result.exit_code != 0

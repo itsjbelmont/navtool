@@ -16,146 +16,84 @@ def db():
     conn.close()
 
 
-def test_default_set_seeded(db):
-    """A fresh database always has the `default` set."""
+def _add(db, name, path, parent_id=None):
+    cur = db.execute(
+        "INSERT INTO nodes (parent_id, name, path) VALUES (?, ?, ?)",
+        (parent_id, name, path),
+    )
+    return cur.lastrowid
+
+
+def test_fresh_db_has_nodes_table_and_no_rows(db):
+    assert db.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='nodes'"
+    ).fetchone() == ("nodes",)
+    assert db.execute("SELECT COUNT(*) FROM nodes").fetchone()[0] == 0
+
+
+def test_insert_top_level_node(db):
+    _add(db, "navtool", "/home/me/navtool")
     row = db.execute(
-        "SELECT set_name FROM sets WHERE set_name = ?", ("default",)
+        "SELECT parent_id, path FROM nodes WHERE name = ?", ("navtool",)
     ).fetchone()
-    assert row == ("default",)
+    assert row == (None, "/home/me/navtool")
 
 
-def test_insert_set_with_description(db):
-    db.execute(
-        "INSERT INTO sets (set_name, description) VALUES (?, ?)",
-        ("projects", "Work-related directories"),
-    )
-
+def test_insert_child_node(db):
+    root = _add(db, "navtool", "/proj/navtool")
+    _add(db, "tests", "/proj/navtool/tests", parent_id=root)
     row = db.execute(
-        "SELECT set_name, description FROM sets WHERE set_name = ?",
-        ("projects",),
+        "SELECT path FROM nodes WHERE parent_id = ? AND name = ?", (root, "tests")
     ).fetchone()
-
-    assert row == ("projects", "Work-related directories")
-
-
-def test_insert_set_without_description(db):
-    db.execute(
-        "INSERT INTO sets (set_name) VALUES (?)",
-        ("personal",),
-    )
-
-    row = db.execute(
-        "SELECT description FROM sets WHERE set_name = ?",
-        ("personal",),
-    ).fetchone()
-
-    assert row[0] is None
+    assert row == ("/proj/navtool/tests",)
 
 
-def test_rename_set_cascades_to_entries(db):
-    """ON UPDATE CASCADE moves entries when a set is renamed."""
-    db.execute("INSERT INTO sets (set_name) VALUES (?)", ("proj",))
-    db.execute(
-        "INSERT INTO entries VALUES (?, ?, ?)", ("proj", "a", "/path/a")
-    )
-
-    db.execute("UPDATE sets SET set_name = ? WHERE set_name = ?", ("nt", "proj"))
-
-    rows = db.execute(
-        "SELECT set_name, entry_value FROM entries WHERE entry_key = ?", ("a",)
-    ).fetchall()
-    assert rows == [("nt", "/path/a")]
-
-
-def test_insert_entry(db):
-    db.execute(
-        "INSERT INTO sets (set_name, description) VALUES (?, ?)",
-        ("projects", None),
-    )
-
-    db.execute(
-        """
-        INSERT INTO entries (set_name, entry_key, entry_value)
-        VALUES (?, ?, ?)
-        """,
-        ("projects", "navtool", "/home/me/navtool"),
-    )
-
-    row = db.execute(
-        """
-        SELECT entry_value
-        FROM entries
-        WHERE set_name = ? AND entry_key = ?
-        """,
-        ("projects", "navtool"),
-    ).fetchone()
-
-    assert row[0] == "/home/me/navtool"
-
-
-def test_duplicate_entry_key_in_same_set_fails(db):
-    db.execute("INSERT INTO sets (set_name, description) VALUES (?, ?)", ("projects", None))
-
-    db.execute(
-        "INSERT INTO entries VALUES (?, ?, ?)",
-        ("projects", "a", "/path/a"),
-    )
-
+def test_duplicate_top_level_name_fails(db):
+    """The partial unique index constrains top-level (NULL-parent) names."""
+    _add(db, "proj", "/a")
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            "INSERT INTO entries VALUES (?, ?, ?)",
-            ("projects", "a", "/path/b"),
-        )
+        _add(db, "proj", "/b")
 
 
-def test_same_entry_key_in_different_sets_allowed(db):
-    db.execute("INSERT INTO sets (set_name, description) VALUES (?, ?)", ("projects", None))
-    db.execute("INSERT INTO sets (set_name, description) VALUES (?, ?)", ("personal", None))
+def test_duplicate_sibling_name_fails(db):
+    root = _add(db, "proj", "/proj")
+    _add(db, "tests", "/proj/tests", parent_id=root)
+    with pytest.raises(sqlite3.IntegrityError):
+        _add(db, "tests", "/proj/other", parent_id=root)
 
-    db.execute(
-        "INSERT INTO entries VALUES (?, ?, ?)",
-        ("projects", "a", "/projects/a"),
-    )
-    db.execute(
-        "INSERT INTO entries VALUES (?, ?, ?)",
-        ("personal", "a", "/personal/a"),
-    )
 
+def test_same_name_under_different_parents_allowed(db):
+    a = _add(db, "a", "/a")
+    b = _add(db, "b", "/b")
+    _add(db, "tests", "/a/tests", parent_id=a)
+    _add(db, "tests", "/b/tests", parent_id=b)
     rows = db.execute(
-        "SELECT set_name, entry_value FROM entries ORDER BY set_name"
+        "SELECT path FROM nodes WHERE name = 'tests' ORDER BY path"
     ).fetchall()
+    assert rows == [("/a/tests",), ("/b/tests",)]
 
-    assert rows == [
-        ("personal", "/personal/a"),
-        ("projects", "/projects/a"),
-    ]
+
+def test_same_name_at_top_and_nested_allowed(db):
+    """A top-level name and a nested name may coincide (different parents)."""
+    _add(db, "tests", "/top/tests")
+    root = _add(db, "proj", "/proj")
+    _add(db, "tests", "/proj/tests", parent_id=root)
+    assert (
+        db.execute("SELECT COUNT(*) FROM nodes WHERE name = 'tests'").fetchone()[0] == 2
+    )
 
 
 def test_foreign_key_enforced(db):
-    """
-    Inserting an entry referencing a non-existent set should fail.
-    """
+    """A child referencing a non-existent parent should fail."""
     with pytest.raises(sqlite3.IntegrityError):
-        db.execute(
-            """
-            INSERT INTO entries (set_name, entry_key, entry_value)
-            VALUES (?, ?, ?)
-            """,
-            ("missing_set", "x", "y"),
-        )
+        _add(db, "orphan", "/x", parent_id=9999)
 
 
-def test_cascade_delete_removes_entries(db):
-    db.execute(
-        "INSERT INTO sets (set_name, description) VALUES (?, ?)",
-        ("projects", "Temporary set"),
-    )
-    db.execute(
-        "INSERT INTO entries VALUES (?, ?, ?)",
-        ("projects", "a", "/path/a"),
-    )
+def test_cascade_delete_removes_subtree(db):
+    root = _add(db, "proj", "/proj")
+    child = _add(db, "tests", "/proj/tests", parent_id=root)
+    _add(db, "unit", "/proj/tests/unit", parent_id=child)
 
-    db.execute("DELETE FROM sets WHERE set_name = ?", ("projects",))
+    db.execute("DELETE FROM nodes WHERE id = ?", (root,))
 
-    row = db.execute("SELECT * FROM entries").fetchone()
-    assert row is None
+    assert db.execute("SELECT COUNT(*) FROM nodes").fetchone()[0] == 0
