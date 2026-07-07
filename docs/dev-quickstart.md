@@ -58,6 +58,14 @@ directory is the repository root.
 
    Append `--no-completion` to either command to skip tab-completion.
 
+### Cleanup Virtual Environment
+
+To deactivate the virtual environment when you're done:
+
+```sh
+deactivate
+```
+
 ## Tab-completion
 
 Completion for both `nav` and `navtool` is backed by a single hidden command,
@@ -88,6 +96,29 @@ startup file inside a sentinel-delimited, idempotent block. Both are DB-free —
 connect/migrate step for them, which matters because `init` is eval'd on every
 shell startup.
 
+The `nav` function itself stays deliberately tiny: it must be a shell function
+(only a function can `cd` the current shell), and shells reprint a function's
+whole body under `which`/`type`. So all of its "is this a subcommand or a
+directory to jump to?" routing lives in a hidden backend, `navtool __route`
+([../src/navtool/cli/commands/route.py](../src/navtool/cli/commands/route.py)),
+which prints a directory to `cd` into (exit 0) or defers to a plain `navtool`
+command (exit non-zero). Like `__complete` it's DB-free at the group level and
+opens its own connection only when it actually resolves a name.
+
+**Directory history** (`nav -`/`nav +`/`nav history`) is pure shell, because its
+state (the per-session stack of visited directories) lives in the shell and the
+recording path — a `chpwd` hook in zsh, `PROMPT_COMMAND` in bash — must not pay
+Python startup on every `cd`. The logic lives in `resources/shell/history.zsh`
+and `history.bash` (separate files: the array syntax differs, and `history.bash`
+is written for the bash 3.2 that ships with macOS). The `nav` wrapper intercepts
+the `-`/`+`/`history` forms before routing. The history cap is resolved from
+config by `navtool init` (via `history_size()`) and baked into a one-line
+preamble in the emitted snippet, still overridable at runtime with
+`$NAV_HISTORY_SIZE`. These shells can't be unit-tested from Python, so they have
+their own subprocess-driven tests in
+[../tests/test_shell_history.py](../tests/test_shell_history.py) (skipped when the
+shell isn't installed).
+
 All per-shell knowledge lives in one registry,
 [../src/navtool/cli/shells.py](../src/navtool/cli/shells.py). **To add a shell
 (e.g. PowerShell):** drop its resource script(s) under `resources/shell/`, add a
@@ -97,14 +128,20 @@ changes. Tests live in [../tests/test_bootstrap.py](../tests/test_bootstrap.py).
 
 ## Databases
 
-The dev and production builds use separate database files, selected automatically:
+navtool stores its state in a data directory (the database is `navtool.db` inside it). The dev and
+production builds use separate directories, selected automatically:
 
-- Dev (editable) build run from this checkout → `<repo>/.navtool.dev.db` (gitignored)
-- Installed (pipx) build → `~/.navtool.db`
-- `$NAVTOOL_DB=/path/to/some.db` overrides either one
+- Dev (editable) build run from this checkout → `<repo>/.navtool.dev/` (gitignored)
+- Installed (pipx) build → `~/.navtool/`
+- `$NAVTOOL_DIR=/path/to/some/dir` overrides either one
 
-Run `navtool db info` to see which database is active and why. Tests use `$NAVTOOL_DB` to point at
-a throwaway file, so they never touch your real data.
+Run `navtool db info` to see which database is active and why. Tests use `$NAVTOOL_DIR` to point at
+a throwaway directory, so they never touch your real data.
+
+The same directory also holds the optional `config.toml` (see `navtool config show`). It's read via
+stdlib `tomllib` in [../src/navtool/cli/config.py](../src/navtool/cli/config.py) — hence the
+`requires-python = ">=3.11"` floor — and reads are total: a missing or malformed file yields `{}`
+so `navtool init`, which is eval'd on every shell startup, can never fail on a bad config.
 
 ### Schema versioning and migrations
 

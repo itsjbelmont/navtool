@@ -54,13 +54,13 @@ SHELLS: dict[str, Shell] = {
     "zsh": Shell(
         name="zsh",
         rc_filename=".zshrc",
-        base_files=("nav.sh",),
+        base_files=("nav.sh", "history.zsh"),
         completion_file="completion.zsh",
     ),
     "bash": Shell(
         name="bash",
         rc_filename=".bashrc",
-        base_files=("nav.sh",),
+        base_files=("nav.sh", "history.bash"),
         completion_file="completion.bash",
     ),
 }
@@ -87,14 +87,21 @@ def detect_shell() -> str | None:
     return name if name in SHELLS else None
 
 
-def render_snippet(shell: Shell, completion: bool = True) -> str:
+def render_snippet(shell: Shell, completion: bool = True, history_size: int = 25) -> str:
     """Return the full integration snippet for ``shell``.
 
-    Concatenates the shell's packaged resource files (the ``nav`` function and,
-    unless disabled, its completion script) into the text that ``navtool init``
-    prints and the startup file evaluates.
+    Concatenates the shell's packaged resource files (the ``nav`` function, the
+    directory-history helpers and, unless disabled, its completion script) into
+    the text that ``navtool init`` prints and the startup file evaluates.
+
+    ``history_size`` (resolved from config by the ``init`` command) is baked into
+    a one-line preamble as the default cap for the per-shell history, still
+    overridable at runtime via ``$NAV_HISTORY_SIZE``. It is a shell-agnostic
+    parameter expansion, valid in every sh-family shell navtool targets.
     """
-    parts = [
+    preamble = f"_NAV_HISTORY_SIZE=${{NAV_HISTORY_SIZE:-{int(history_size)}}}"
+    parts = [preamble]
+    parts += [
         (RESOURCES_DIR / name).read_text() for name in shell.resource_files(completion)
     ]
     return "\n".join(part.rstrip("\n") for part in parts) + "\n"

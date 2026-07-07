@@ -32,8 +32,44 @@ When an argument doesn't resolve to a registered name, `nav` falls back to a pla
 `nav ../sibling` or `nav /some/path` behaves like `cd`.
 
 Because the shell function treats the first word as a subcommand when it matches one (`add`, `rm`,
-`mv`, `update`, `ls`, `which`, `db`, `path`), a top-level name should not share a name with a
-command. Nested names are always addressed with a `:` path, so they never collide with commands.
+`mv`, `update`, `ls`, `which`, `db`, `path`, `config`), a top-level name should not share a name
+with a command. Nested names are always addressed with a `:` path, so they never collide with
+commands.
+
+## Directory history
+
+`nav` remembers the directories you visit in the current shell — **every `cd`, not just `nav`
+jumps** — and lets you walk that history like a browser's back/forward buttons:
+
+```sh
+nav -               # go back one directory
+nav -3              # go back three
+nav +               # go forward one
+nav +2              # go forward two
+nav history         # list remembered directories, marking (*) the current spot
+```
+
+`-` (back) and `+` (forward) are used rather than `<`/`>` because the shell would parse `<`/`>` as
+redirections before `nav` ever ran (`nav <3` would try to read a file named `3`). `-`/`+` need no
+quoting and echo `cd -`.
+
+`nav history` marks the current directory with `*` (and highlights it in colour on a terminal —
+suppressed when piped or when `NO_COLOR` is set), and annotates every other entry with the command
+that reaches it, so you can see where a jump lands before making it:
+
+```sh
+$ nav history
+-2   /Users/me/projects
+-1   /Users/me/projects/myproj
+*    /Users/me/projects/myproj/src
++1   /Users/me/downloads
+```
+
+History is **per shell session and lives only in memory** — each shell tracks its own and nothing
+is written to disk. Going back with `nav -` and then `cd`-ing somewhere new drops the "forward"
+trail, just like a browser. Jumps clamp at the ends (you can't go back past the oldest entry). The
+number of directories each shell remembers defaults to 25 and is configurable — see
+[`nav config`](#nav-config--inspect-configuration) below.
 
 ## Managing names
 
@@ -48,9 +84,9 @@ command. Nested names are always addressed with a `:` path, so they never collid
 
 ## `nav db` — inspect the database
 
-The database file is chosen automatically: an installed (pipx) build uses `~/.navtool.db`, a
-dev/editable build run from the repo uses `<repo>/.navtool.dev.db`, and `$NAVTOOL_DB` overrides
-both.
+navtool keeps its state in a data directory; the database is `navtool.db` inside it. The directory
+is chosen automatically: an installed (pipx) build uses `~/.navtool/`, a dev/editable build run
+from the repo uses `<repo>/.navtool.dev/`, and `$NAVTOOL_DIR` overrides both.
 
 | Command | Description |
 |---|---|
@@ -63,6 +99,29 @@ The database is versioned with SQLite's `PRAGMA user_version`. When navtool open
 is behind the current schema, it first writes a timestamped `*.pre-migrate-*` backup next to the
 file, then applies the pending migrations. A database created by a *newer* navtool is refused, and
 a pre-overhaul database (from the old set/key model) is rejected with instructions to delete it.
+
+## `nav config` — inspect configuration
+
+navtool reads an optional TOML config file, `config.toml`, from the same data directory as the
+database (`~/.navtool/config.toml`, or `<repo>/.navtool.dev/config.toml` for a dev build). The file
+is hand-edited and entirely optional — navtool never writes it, and a missing or malformed file
+simply falls back to defaults.
+
+| Command | Description |
+|---|---|
+| `nav config path` | Print the path of the config file (whether or not it exists yet). |
+| `nav config show` | Show the resolved configuration and whether each value comes from the file or a default. |
+
+Currently the only setting is the directory-history cap:
+
+```toml
+# ~/.navtool/config.toml
+history_size = 50
+```
+
+The value is read by `nav init` and baked into the shell integration, so **re-source your shell (or
+open a new one) after changing it**. For a one-off override without editing the file, set the
+`NAV_HISTORY_SIZE` environment variable before the integration loads.
 
 ## `nav --version`
 
@@ -205,7 +264,7 @@ Removed 'api' and 1 nested entry
 
 ```sh
 $ nav db info
-Database:  /Users/me/.navtool.db
+Database:  /Users/me/.navtool/navtool.db
 Source:    prod build (installed)
 Size:      20.0 KB
 Schema:    version 1 (up to date)

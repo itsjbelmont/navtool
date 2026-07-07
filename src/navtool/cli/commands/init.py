@@ -9,6 +9,7 @@ never touches the database (see the DB-free skip in :mod:`navtool.cli`).
 
 import click
 
+from navtool.cli.config import history_size
 from navtool.cli.shells import (SHELLS, detect_shell, render_snippet,
                                 supported_shells)
 
@@ -39,4 +40,9 @@ def init(shell, no_completion):
             f"Pass one explicitly: navtool init <{supported}>."
         )
 
-    click.echo(render_snippet(SHELLS[name], completion=not no_completion), nl=False)
+    click.echo(
+        render_snippet(
+            SHELLS[name], completion=not no_completion, history_size=history_size()
+        ),
+        nl=False,
+    )

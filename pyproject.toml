@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -8,10 +8,31 @@ version = "0.1.0"
 description = "Navigate directories by mapping short names to them in a tree"
 readme = "README.md"
 authors = [{name = "Jack Belmont", email = "jackbelmont8@gmail.com"}]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
+license = "MIT"
+license-files = ["LICENSE"]
+keywords = ["cli", "shell", "navigation", "cd", "directory", "zsh", "bash", "productivity"]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Operating System :: POSIX",
+  "Operating System :: MacOS",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Utilities",
+  "Topic :: System :: Shells",
+]
 dependencies = [
   "click>=8.3.1"
 ]
+
+[project.urls]
+Homepage = "https://github.com/itsjbelmont/navtool"
+Repository = "https://github.com/itsjbelmont/navtool"
+Issues = "https://github.com/itsjbelmont/navtool/issues"
 
 [tool.setuptools.packages.find]
 where = ["src"]

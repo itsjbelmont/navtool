@@ -6,13 +6,13 @@ from navtool.cli import cli
 
 @pytest.fixture
 def runner(tmp_path, monkeypatch):
-    """A CliRunner backed by a throwaway on-disk database.
+    """A CliRunner backed by a throwaway on-disk data directory.
 
-    Each invocation reopens the same DB file, so state persists across the
-    multiple `run(...)` calls within a single test.
+    ``$NAVTOOL_DIR`` points navtool at ``tmp_path`` (so the database lands at
+    ``tmp_path/navtool.db``). Each invocation reopens the same file, so state
+    persists across the multiple `run(...)` calls within a single test.
     """
-    db_path = tmp_path / "navtool.db"
-    monkeypatch.setenv("NAVTOOL_DB", str(db_path))
+    monkeypatch.setenv("NAVTOOL_DIR", str(tmp_path))
     return CliRunner()
 
 
@@ -329,7 +329,7 @@ def test_db_info_reports_counts(run, tmp_path):
     result = run("db", "info")
     assert result.exit_code == 0
     assert str(tmp_path / "navtool.db") in result.output
-    assert "override via $NAVTOOL_DB" in result.output
+    assert "override via $NAVTOOL_DIR" in result.output
     assert "Nodes:     2" in result.output
     assert "Top-level: 1" in result.output
 
@@ -361,3 +361,109 @@ def test_version_flag(run):
     result = run("--version")
     assert result.exit_code == 0
     assert "navtool" in result.output.lower()
+
+
+# ----------------- __route (nav wrapper backend) -----------------
+# Exit 0 with a path on stdout => the shell wrapper runs `cd <path>`.
+# Exit 1 with no output       => the wrapper reruns the args as `navtool <args>`.
+def test_route_resolves_name_to_path(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    result = run("__route", "proj")
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path)
+
+
+def test_route_resolves_nested_name(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(tmp_path))
+    result = run("__route", "proj:tests")
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path)
+
+
+def test_route_echoes_unknown_name_for_cd_fallback(run):
+    # An unknown word is echoed back verbatim so the wrapper's `cd` can try it as
+    # a literal path (mirrors the old `navtool path … || cd "$1"` fallback).
+    result = run("__route", "not-a-name")
+    assert result.exit_code == 0
+    assert result.output.strip() == "not-a-name"
+
+
+def test_route_passes_through_known_subcommand(run):
+    result = run("__route", "add")
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+def test_route_passes_through_when_no_args(run):
+    result = run("__route")
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+def test_route_passes_through_multiple_args(run, tmp_path):
+    # Even if the first word names an entry, extra args mean it's a command line.
+    run("add", "proj", str(tmp_path))
+    result = run("__route", "proj", "extra")
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+@pytest.mark.parametrize("flag", ["-h", "--help", "--version"])
+def test_route_passes_through_option_flags(run, flag):
+    # Option-like words are for navtool, not names; __route must not treat them
+    # as its own help/version or the wrapper would `cd` into that output.
+    result = run("__route", flag)
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+# ----------------- config -----------------
+def test_config_path_points_into_data_dir(run, tmp_path):
+    result = run("config", "path")
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path / "config.toml")
+
+
+def test_config_show_uses_default_when_no_file(run, tmp_path):
+    from navtool.cli.config import DEFAULT_HISTORY_SIZE
+
+    result = run("config", "show")
+    assert result.exit_code == 0
+    assert "not present" in result.output
+    assert f"history_size:  {DEFAULT_HISTORY_SIZE} (default" in result.output
+
+
+def test_config_show_reads_history_size_from_file(run, tmp_path):
+    (tmp_path / "config.toml").write_text("history_size = 50\n")
+    result = run("config", "show")
+    assert result.exit_code == 0
+    assert "present" in result.output
+    assert "history_size:  50 (from config file)" in result.output
+
+
+def test_history_size_helper_reads_and_validates(tmp_path, monkeypatch):
+    from navtool.cli import config as cfg
+
+    monkeypatch.setenv("NAVTOOL_DIR", str(tmp_path))
+    conf = tmp_path / "config.toml"
+
+    assert cfg.history_size() == cfg.DEFAULT_HISTORY_SIZE  # no file
+
+    conf.write_text("history_size = 10\n")
+    assert cfg.history_size() == 10
+
+    # Non-positive, wrong-type, and bool values all fall back to the default.
+    for bad in ("history_size = 0\n", "history_size = -5\n",
+                'history_size = "lots"\n', "history_size = true\n"):
+        conf.write_text(bad)
+        assert cfg.history_size() == cfg.DEFAULT_HISTORY_SIZE
+
+
+def test_load_config_tolerates_malformed_file(tmp_path, monkeypatch):
+    from navtool.cli import config as cfg
+
+    monkeypatch.setenv("NAVTOOL_DIR", str(tmp_path))
+    (tmp_path / "config.toml").write_text("this is not = valid = toml ][\n")
+    assert cfg.load_config() == {}
+    assert cfg.history_size() == cfg.DEFAULT_HISTORY_SIZE
