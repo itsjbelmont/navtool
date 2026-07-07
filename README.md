@@ -98,7 +98,7 @@ echo $SHELL         # should end in /zsh or /bash
 bash --version      # bash users only: 4.2+ needed for nested tab-completion
 ```
 
-### Steps
+### Installation Steps
 
 1. Clone the repository:
 
@@ -107,11 +107,13 @@ bash --version      # bash users only: 4.2+ needed for nested tab-completion
    cd navtool
    ```
 
-1. Verify the requirements:
+1. Verify your system has the required dependencies:
 
    ```sh
    sh scripts/check-requirements.sh
    ```
+
+   If any requirements are missing, make sure to install them before proceeding.
 
 1. Install the `navtool` CLI with pipx:
 
