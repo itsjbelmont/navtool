@@ -46,6 +46,31 @@ $ nav history  # list this shell's history, highlighting the current spot
 
 For a full list of available commands, run `nav --help` after installation.
 
+## Supported Shells
+
+| Shell | Name navigation | `cd` fallthrough | Tab-completion | Directory history |
+|---|:---:|:---:|:---:|:---:|
+| **zsh** | ✅ | ✅ | ✅ | ✅ |
+| **bash** | ✅ | ✅ | ⚙️ † | ✅ ‡ |
+| **fish** | ❌ | ❌ | ❌ | ❌ |
+| **PowerShell** | ❌ | ❌ | ❌ | ❌ |
+
+**Legend:** ✅ Supported (works out of the box after `navtool bootstrap`) · ⚙️ Partial (works, but
+full functionality needs extra setup) · ❌ Not supported yet
+
+**Notes:**
+
+- **†** In bash, top-level completion works out of the box, but nested `name:sub` completion needs
+  the [`bash-completion`](https://github.com/scop/bash-completion) package (on macOS, that means
+  `bash-completion@2` and bash 4.2+ — the system bash is 3.2). See
+  [docs/troubleshooting/bash.md](docs/troubleshooting/bash.md).
+- **‡** In bash, directory history is recorded from `PROMPT_COMMAND` (bash has no `chpwd` hook), so
+  several `cd`s within a single compound command record only the final directory. zsh records every
+  change via `chpwd`.
+
+fish and PowerShell aren't wired up yet, but the integration is per-shell and self-contained, so
+support can be added without touching the core CLI.
+
 ## Install From Source
 
 > **Hitting a snag?** See [docs/troubleshooting/README.md](docs/troubleshooting/README.md) for known
