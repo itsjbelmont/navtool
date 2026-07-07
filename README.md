@@ -1,5 +1,9 @@
 # NavTool
 
+[![CI](https://github.com/itsjbelmont/navtool/actions/workflows/ci.yml/badge.svg)](https://github.com/itsjbelmont/navtool/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11%2B-blue.svg)](pyproject.toml)
+
 NavTool is a "quick jump" CLI that maps long directory paths to memorable keywords for rapid access
 from any location in your terminal. Navigation is performed using the `nav` command.
 
@@ -152,3 +156,12 @@ file (`eval "$(navtool init …)"`) is stable across versions and re-reads the f
 on every shell startup — so restarting your shell is all it takes to pick up the new `nav` function,
 completion, and history helpers. Re-run `navtool bootstrap` only if you want to switch shells or
 toggle tab-completion.
+
+## Contributing
+
+Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for how to set up a dev
+environment, run the tests, and open a pull request.
+
+## License
+
+NavTool is released under the [MIT License](LICENSE).
