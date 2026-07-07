@@ -33,7 +33,7 @@ $ nav /path/to/directory # not special navtool syntax → falls through to `cd /
 
 For a full list of available commands, run `nav --help` after installation.
 
-## Manual Installation
+## Install From Source
 
 > **Hitting a snag?** See [docs/troubleshooting/README.md](docs/troubleshooting/README.md) for known
 > issues and fixes, organized by shell.

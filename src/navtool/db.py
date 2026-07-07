@@ -32,7 +32,13 @@ def create_connection(db_path: str) -> sqlite3.Connection:
     Create a SQLite connection with foreign keys enabled.
     Does NOT run migrations. `PRAGMA foreign_keys` is set here, before any
     transaction, because it is a no-op inside one.
+
+    The database's parent directory is created if missing: navtool's data now
+    lives inside a directory (e.g. ``~/.navtool/``), which may not exist yet on
+    a fresh install. Skipped for the ``:memory:`` sentinel.
     """
+    if db_path != MEMORY_DB:
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(db_path)
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn

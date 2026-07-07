@@ -136,10 +136,11 @@ def name_path_completer(ctx, param, incomplete):
     than breaking completion.
     """
     from navtool.cli.config import resolve_db_path
+    from navtool.db import create_connection
 
     try:
-        conn = sqlite3.connect(resolve_db_path())
-    except sqlite3.Error:
+        conn = create_connection(resolve_db_path())
+    except (sqlite3.Error, OSError):
         return []
     try:
         return _complete_name_path(conn, incomplete)

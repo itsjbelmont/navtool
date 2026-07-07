@@ -48,9 +48,9 @@ command. Nested names are always addressed with a `:` path, so they never collid
 
 ## `nav db` — inspect the database
 
-The database file is chosen automatically: an installed (pipx) build uses `~/.navtool.db`, a
-dev/editable build run from the repo uses `<repo>/.navtool.dev.db`, and `$NAVTOOL_DB` overrides
-both.
+navtool keeps its state in a data directory; the database is `navtool.db` inside it. The directory
+is chosen automatically: an installed (pipx) build uses `~/.navtool/`, a dev/editable build run
+from the repo uses `<repo>/.navtool.dev/`, and `$NAVTOOL_DIR` overrides both.
 
 | Command | Description |
 |---|---|
@@ -205,7 +205,7 @@ Removed 'api' and 1 nested entry
 
 ```sh
 $ nav db info
-Database:  /Users/me/.navtool.db
+Database:  /Users/me/.navtool/navtool.db
 Source:    prod build (installed)
 Size:      20.0 KB
 Schema:    version 1 (up to date)

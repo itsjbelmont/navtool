@@ -8,7 +8,7 @@ This directory contains NavTool's test suite:
   pre-overhaul databases.
 - `test_cli.py` — command-level tests that invoke the CLI against a throwaway database.
 
-The CLI tests set `$NAVTOOL_DB` to a temporary file, so running them never touches your real
+The CLI tests set `$NAVTOOL_DIR` to a temporary directory, so running them never touches your real
 NavTool data.
 
 ## Running

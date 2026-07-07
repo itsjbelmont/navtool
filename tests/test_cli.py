@@ -6,13 +6,13 @@ from navtool.cli import cli
 
 @pytest.fixture
 def runner(tmp_path, monkeypatch):
-    """A CliRunner backed by a throwaway on-disk database.
+    """A CliRunner backed by a throwaway on-disk data directory.
 
-    Each invocation reopens the same DB file, so state persists across the
-    multiple `run(...)` calls within a single test.
+    ``$NAVTOOL_DIR`` points navtool at ``tmp_path`` (so the database lands at
+    ``tmp_path/navtool.db``). Each invocation reopens the same file, so state
+    persists across the multiple `run(...)` calls within a single test.
     """
-    db_path = tmp_path / "navtool.db"
-    monkeypatch.setenv("NAVTOOL_DB", str(db_path))
+    monkeypatch.setenv("NAVTOOL_DIR", str(tmp_path))
     return CliRunner()
 
 
@@ -329,7 +329,7 @@ def test_db_info_reports_counts(run, tmp_path):
     result = run("db", "info")
     assert result.exit_code == 0
     assert str(tmp_path / "navtool.db") in result.output
-    assert "override via $NAVTOOL_DB" in result.output
+    assert "override via $NAVTOOL_DIR" in result.output
     assert "Nodes:     2" in result.output
     assert "Top-level: 1" in result.output
 

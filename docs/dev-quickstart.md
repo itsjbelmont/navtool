@@ -97,14 +97,15 @@ changes. Tests live in [../tests/test_bootstrap.py](../tests/test_bootstrap.py).
 
 ## Databases
 
-The dev and production builds use separate database files, selected automatically:
+navtool stores its state in a data directory (the database is `navtool.db` inside it). The dev and
+production builds use separate directories, selected automatically:
 
-- Dev (editable) build run from this checkout → `<repo>/.navtool.dev.db` (gitignored)
-- Installed (pipx) build → `~/.navtool.db`
-- `$NAVTOOL_DB=/path/to/some.db` overrides either one
+- Dev (editable) build run from this checkout → `<repo>/.navtool.dev/` (gitignored)
+- Installed (pipx) build → `~/.navtool/`
+- `$NAVTOOL_DIR=/path/to/some/dir` overrides either one
 
-Run `navtool db info` to see which database is active and why. Tests use `$NAVTOOL_DB` to point at
-a throwaway file, so they never touch your real data.
+Run `navtool db info` to see which database is active and why. Tests use `$NAVTOOL_DIR` to point at
+a throwaway directory, so they never touch your real data.
 
 ### Schema versioning and migrations
 

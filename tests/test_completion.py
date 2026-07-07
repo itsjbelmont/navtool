@@ -11,8 +11,7 @@ from navtool.db import create_connection, migrate
 
 @pytest.fixture
 def runner(tmp_path, monkeypatch):
-    db_path = tmp_path / "navtool.db"
-    monkeypatch.setenv("NAVTOOL_DB", str(db_path))
+    monkeypatch.setenv("NAVTOOL_DIR", str(tmp_path))
     return CliRunner()
 
 
