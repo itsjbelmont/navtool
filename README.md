@@ -120,3 +120,35 @@ support can be added without touching the core CLI.
 
 To uninstall the CLI: `pipx uninstall navtool` (and remove the `navtool` block
 from your startup file).
+
+## Upgrading From Source
+
+If an older `navtool` is already installed, upgrade it in place from an updated checkout:
+
+1. Pull the latest source into your existing clone:
+
+   ```sh
+   cd navtool     # your existing clone
+   git pull
+   ```
+
+2. Reinstall the CLI over the existing one — `--force` replaces what pipx already has:
+
+   ```sh
+   pipx install --force .
+   ```
+
+3. Restart your terminals (or re-source your startup file):
+
+   ```sh
+   exec $SHELL     # or: source ~/.zshrc  /  source ~/.bashrc
+   ```
+
+   The `nav` function is loaded into each shell at startup, so an already-running shell keeps the
+   old version until it reloads.
+
+You do **not** need to re-run `navtool bootstrap`. The single managed line it added to your startup
+file (`eval "$(navtool init …)"`) is stable across versions and re-reads the freshly installed CLI
+on every shell startup — so restarting your shell is all it takes to pick up the new `nav` function,
+completion, and history helpers. Re-run `navtool bootstrap` only if you want to switch shells or
+toggle tab-completion.
