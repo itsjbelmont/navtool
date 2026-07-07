@@ -361,3 +361,58 @@ def test_version_flag(run):
     result = run("--version")
     assert result.exit_code == 0
     assert "navtool" in result.output.lower()
+
+
+# ----------------- __route (nav wrapper backend) -----------------
+# Exit 0 with a path on stdout => the shell wrapper runs `cd <path>`.
+# Exit 1 with no output       => the wrapper reruns the args as `navtool <args>`.
+def test_route_resolves_name_to_path(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    result = run("__route", "proj")
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path)
+
+
+def test_route_resolves_nested_name(run, tmp_path):
+    run("add", "proj", str(tmp_path))
+    run("add", "proj:tests", str(tmp_path))
+    result = run("__route", "proj:tests")
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path)
+
+
+def test_route_echoes_unknown_name_for_cd_fallback(run):
+    # An unknown word is echoed back verbatim so the wrapper's `cd` can try it as
+    # a literal path (mirrors the old `navtool path … || cd "$1"` fallback).
+    result = run("__route", "not-a-name")
+    assert result.exit_code == 0
+    assert result.output.strip() == "not-a-name"
+
+
+def test_route_passes_through_known_subcommand(run):
+    result = run("__route", "add")
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+def test_route_passes_through_when_no_args(run):
+    result = run("__route")
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+def test_route_passes_through_multiple_args(run, tmp_path):
+    # Even if the first word names an entry, extra args mean it's a command line.
+    run("add", "proj", str(tmp_path))
+    result = run("__route", "proj", "extra")
+    assert result.exit_code == 1
+    assert result.output == ""
+
+
+@pytest.mark.parametrize("flag", ["-h", "--help", "--version"])
+def test_route_passes_through_option_flags(run, flag):
+    # Option-like words are for navtool, not names; __route must not treat them
+    # as its own help/version or the wrapper would `cd` into that output.
+    result = run("__route", flag)
+    assert result.exit_code == 1
+    assert result.output == ""

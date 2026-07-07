@@ -58,6 +58,14 @@ directory is the repository root.
 
    Append `--no-completion` to either command to skip tab-completion.
 
+### Cleanup Virtual Environment
+
+To deactivate the virtual environment when you're done:
+
+```sh
+deactivate
+```
+
 ## Tab-completion
 
 Completion for both `nav` and `navtool` is backed by a single hidden command,
@@ -87,6 +95,15 @@ startup file inside a sentinel-delimited, idempotent block. Both are DB-free —
 [../src/navtool/cli/__init__.py](../src/navtool/cli/__init__.py) skips the
 connect/migrate step for them, which matters because `init` is eval'd on every
 shell startup.
+
+The `nav` function itself stays deliberately tiny: it must be a shell function
+(only a function can `cd` the current shell), and shells reprint a function's
+whole body under `which`/`type`. So all of its "is this a subcommand or a
+directory to jump to?" routing lives in a hidden backend, `navtool __route`
+([../src/navtool/cli/commands/route.py](../src/navtool/cli/commands/route.py)),
+which prints a directory to `cd` into (exit 0) or defers to a plain `navtool`
+command (exit non-zero). Like `__complete` it's DB-free at the group level and
+opens its own connection only when it actually resolves a name.
 
 All per-shell knowledge lives in one registry,
 [../src/navtool/cli/shells.py](../src/navtool/cli/shells.py). **To add a shell

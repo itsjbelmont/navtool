@@ -14,6 +14,7 @@ from navtool.cli.commands.ls import ls
 from navtool.cli.commands.mv import mv
 from navtool.cli.commands.path import get_path
 from navtool.cli.commands.rm import rm
+from navtool.cli.commands.route import route
 from navtool.cli.commands.update import update
 from navtool.cli.commands.which import which
 
@@ -27,5 +28,7 @@ def register_commands(cli) -> None:
     for command in _TOP_LEVEL:
         cli.add_command(command)
     cli.add_command(db_group)
-    # Hidden completion backend for the shell wrappers (see complete.py).
+    # Hidden backends for the shell wrappers: completion candidates (complete.py)
+    # and `nav` routing (route.py).
     cli.add_command(complete)
+    cli.add_command(route)

@@ -13,10 +13,12 @@ from navtool.cli.config import resolve_db_path
 from navtool.db import (IncompatibleDatabaseError, NewerDatabaseError,
                         create_connection, migrate)
 
-# Subcommands that only emit shell configuration and never read the database.
-# They skip the connect/migrate step below — critical for `init`, which is
-# eval'd on every shell startup.
-DB_FREE_COMMANDS = {"init", "bootstrap"}
+# Subcommands that must not have the root group open/migrate the database for
+# them. `init`/`bootstrap` only emit shell config (critical for `init`, eval'd on
+# every shell startup). `__route` runs on every `nav` call and opens its own
+# connection lazily — only when it actually resolves a name — so passthrough
+# routing stays a cheap, DB-free classification.
+DB_FREE_COMMANDS = {"init", "bootstrap", "__route"}
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})
