@@ -31,6 +31,19 @@ you wish to use it as such.
 $ nav /path/to/directory # not special navtool syntax → falls through to `cd /path/to/directory`
 ```
 
+NavTool also tracks a per-shell directory history — **every `cd`, not just `nav` jumps** — so you can
+walk back and forward through where you've been, like a browser's back/forward buttons.
+
+```sh
+$ nav -        # go back to the previous directory
+$ nav -3       # go back three
+$ nav +        # go forward again
+$ nav history  # list this shell's history, highlighting the current spot
+```
+
+> _History lives only in the current shell session (in memory, never on disk); each terminal keeps its
+> own. The number of directories remembered defaults to 25 and is configurable._
+
 For a full list of available commands, run `nav --help` after installation.
 
 ## Install From Source
@@ -40,7 +53,7 @@ For a full list of available commands, run `nav --help` after installation.
 
 ### Requirements
 
-- Python 3.10+
+- Python 3.11+
 - [pipx](https://pipx.pypa.io/) (for installing the CLI)
 
 ### Steps
