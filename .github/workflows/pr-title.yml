@@ -1,0 +1,94 @@
+name: PR Title
+
+# Validate that the pull-request title follows Conventional Commits, and keep a
+# single "sticky" comment on the PR reporting success/failure. Re-runs whenever
+# the title is edited (the `edited` type fires on title/body changes) and always
+# UPDATES the same comment rather than posting a new one.
+#
+# Uses `pull_request_target` so it can also comment on PRs from forks (a plain
+# `pull_request` run from a fork gets a read-only token and can't comment). This
+# is safe here because the job only reads the PR *title* from the trusted event
+# payload and calls the API — it never checks out or executes PR code.
+
+on:
+  pull_request_target:
+    types: [opened, edited, reopened]
+
+permissions:
+  pull-requests: write
+
+# Serialize runs per PR so rapid title edits can't race into duplicate comments.
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  conventional-title:
+    name: Conventional Commits title
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate title and update the sticky comment
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const marker = '<!-- pr-title-lint -->';
+            const types = ['feat', 'fix', 'docs', 'style', 'refactor', 'perf',
+                           'test', 'build', 'ci', 'chore', 'revert'];
+            const title = context.payload.pull_request.title || '';
+
+            // <type>(<optional scope>)<optional !>: <description>
+            const pattern = new RegExp(`^(${types.join('|')})(\\([^)]+\\))?(!)?: .+`);
+            const valid = pattern.test(title);
+
+            const success = [
+              marker,
+              '### ✅ PR title follows Conventional Commits',
+              '',
+              '```',
+              title,
+              '```',
+              '',
+              'Nice — this will produce a clean changelog entry.',
+            ].join('\n');
+
+            const failure = [
+              marker,
+              '### ❌ PR title is not in Conventional Commits format',
+              '',
+              'Your title:',
+              '',
+              '```',
+              title,
+              '```',
+              '',
+              'Please rename it to `type(optional-scope): description`. Examples:',
+              '',
+              '- `feat: add nav history highlighting`',
+              '- `fix(shell): stop parsing angle brackets as redirection`',
+              '- `docs: document Homebrew install`',
+              '- `refactor!: drop Python 3.10 support`  — the `!` marks a breaking change',
+              '',
+              `Allowed types: \`${types.join('`, `')}\`.`,
+              '',
+              'Reference: https://www.conventionalcommits.org',
+            ].join('\n');
+
+            const body = valid ? success : failure;
+            const { owner, repo } = context.repo;
+            const issue_number = context.payload.pull_request.number;
+
+            // Find our existing sticky comment by its hidden marker.
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100,
+            });
+            const existing = comments.find(c => c.body && c.body.includes(marker));
+
+            if (existing) {
+              await github.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body });
+            } else {
+              await github.rest.issues.createComment({ owner, repo, issue_number, body });
+            }
+
+            if (!valid) {
+              core.setFailed(`PR title is not Conventional Commits formatted: "${title}"`);
+            }
