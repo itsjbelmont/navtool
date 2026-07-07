@@ -36,7 +36,15 @@ jobs:
       # bash ships on the runner; zsh is needed for the shell-integration tests
       # (they auto-skip when a shell is missing, but we want them to actually run).
       - name: Install zsh
-        run: sudo apt-get update && sudo apt-get install -y zsh
+        run: |
+          # Some preinstalled third-party apt repos (Microsoft's) intermittently
+          # serve invalid signatures and make `apt-get update` exit non-zero on the
+          # runner image. We only need zsh from the base Ubuntu archive, so remove
+          # any repo pointing at packages.microsoft.com before updating.
+          ms=$(grep -rl packages.microsoft.com /etc/apt/sources.list.d/ 2>/dev/null || true)
+          if [ -n "$ms" ]; then echo "$ms" | sudo xargs rm -f; fi
+          sudo apt-get update
+          sudo apt-get install -y zsh
       - name: Install with dev dependencies
         run: |
           python -m pip install --upgrade pip
