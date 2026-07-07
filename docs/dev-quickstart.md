@@ -105,6 +105,20 @@ which prints a directory to `cd` into (exit 0) or defers to a plain `navtool`
 command (exit non-zero). Like `__complete` it's DB-free at the group level and
 opens its own connection only when it actually resolves a name.
 
+**Directory history** (`nav -`/`nav +`/`nav history`) is pure shell, because its
+state (the per-session stack of visited directories) lives in the shell and the
+recording path — a `chpwd` hook in zsh, `PROMPT_COMMAND` in bash — must not pay
+Python startup on every `cd`. The logic lives in `resources/shell/history.zsh`
+and `history.bash` (separate files: the array syntax differs, and `history.bash`
+is written for the bash 3.2 that ships with macOS). The `nav` wrapper intercepts
+the `-`/`+`/`history` forms before routing. The history cap is resolved from
+config by `navtool init` (via `history_size()`) and baked into a one-line
+preamble in the emitted snippet, still overridable at runtime with
+`$NAV_HISTORY_SIZE`. These shells can't be unit-tested from Python, so they have
+their own subprocess-driven tests in
+[../tests/test_shell_history.py](../tests/test_shell_history.py) (skipped when the
+shell isn't installed).
+
 All per-shell knowledge lives in one registry,
 [../src/navtool/cli/shells.py](../src/navtool/cli/shells.py). **To add a shell
 (e.g. PowerShell):** drop its resource script(s) under `resources/shell/`, add a
@@ -123,6 +137,11 @@ production builds use separate directories, selected automatically:
 
 Run `navtool db info` to see which database is active and why. Tests use `$NAVTOOL_DIR` to point at
 a throwaway directory, so they never touch your real data.
+
+The same directory also holds the optional `config.toml` (see `navtool config show`). It's read via
+stdlib `tomllib` in [../src/navtool/cli/config.py](../src/navtool/cli/config.py) — hence the
+`requires-python = ">=3.11"` floor — and reads are total: a missing or malformed file yields `{}`
+so `navtool init`, which is eval'd on every shell startup, can never fail on a bad config.
 
 ### Schema versioning and migrations
 

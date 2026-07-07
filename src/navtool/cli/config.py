@@ -24,7 +24,7 @@ DB_FILENAME = "navtool.db"
 # Filename of the (optional, hand-edited) TOML config within the data directory.
 CONFIG_FILENAME = "config.toml"
 
-# Default number of directories each shell session remembers for `nav <`/`nav >`.
+# Default number of directories each shell session remembers for `nav -`/`nav +`.
 DEFAULT_HISTORY_SIZE = 25
 
 
