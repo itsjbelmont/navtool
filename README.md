@@ -84,8 +84,21 @@ support can be added without touching the core CLI.
 
 - Python 3.11+
 - [pipx](https://pipx.pypa.io/) (for installing the CLI)
+- A supported login shell — zsh or bash (see [Supported Shells](#supported-shells))
 
-### Steps
+The repo ships a checker script that verifies the dependencies automatically.
+Run it from the repo root after cloning via `sh scripts/check-requirements.sh`.
+
+Prefer to check by hand? These cover the same ground:
+
+```sh
+python3 --version   # needs 3.11 or newer
+pipx --version      # any version — just needs to be installed
+echo $SHELL         # should end in /zsh or /bash
+bash --version      # bash users only: 4.2+ needed for nested tab-completion
+```
+
+### Installation Steps
 
 1. Clone the repository:
 
@@ -94,13 +107,21 @@ support can be added without touching the core CLI.
    cd navtool
    ```
 
-2. Install the `navtool` CLI with pipx:
+1. Verify your system has the required dependencies:
+
+   ```sh
+   sh scripts/check-requirements.sh
+   ```
+
+   If any requirements are missing, make sure to install them before proceeding.
+
+1. Install the `navtool` CLI with pipx:
 
    ```sh
    pipx install .
    ```
 
-3. Hook the `nav` function (and tab-completion) into your shell:
+1. Hook the `nav` function (and tab-completion) into your shell:
    - `nav` is a sourced shell function that wraps the main `navtool` CLI — `navtool` resolves the keyword to a path, and `nav` performs the actual `cd` in your shell.
 
    ```sh
@@ -112,9 +133,9 @@ support can be added without touching the core CLI.
    > updated in place, never duplicated — and it backs up the file before editing.
    > Pass `--shell zsh` to be explicit, or `--dry-run` to preview the change.
 
-4. Restart your terminals (or re-source your startup file).
+1. Restart your terminals (or re-source your startup file).
 
-5. Verify:
+1. Verify:
 
    ```sh
    which navtool     # -> ~/.local/bin/navtool
