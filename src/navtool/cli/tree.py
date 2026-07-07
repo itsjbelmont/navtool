@@ -155,11 +155,19 @@ def _like_prefix(partial: str) -> str:
     return escaped + "%"
 
 
-def _render_subtree(conn, node_id, name, path, depth, lines) -> None:
-    """Append an indented ``name -> path`` line for a node and its descendants."""
+def _render_subtree(conn, node_id, name, path, depth, lines, max_depth=None) -> None:
+    """Append an indented ``name -> path`` line for a node and its descendants.
+
+    ``max_depth`` (1-indexed, counted from this call's ``depth``) caps how many
+    levels are shown: with ``depth=0``, ``max_depth=1`` renders only this node,
+    ``max_depth=2`` this node and its direct children, and so on. ``None`` means
+    no limit.
+    """
     lines.append(f"{'  ' * depth}{click.style(name, fg='green')} -> {path}")
+    if max_depth is not None and depth + 1 >= max_depth:
+        return
     for cid, cname, cpath in conn.execute(
         "SELECT id, name, path FROM nodes WHERE parent_id = ? ORDER BY name",
         (node_id,),
     ).fetchall():
-        _render_subtree(conn, cid, cname, cpath, depth + 1, lines)
+        _render_subtree(conn, cid, cname, cpath, depth + 1, lines, max_depth)
