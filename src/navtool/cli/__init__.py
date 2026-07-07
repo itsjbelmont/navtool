@@ -17,8 +17,9 @@ from navtool.db import (IncompatibleDatabaseError, NewerDatabaseError,
 # them. `init`/`bootstrap` only emit shell config (critical for `init`, eval'd on
 # every shell startup). `__route` runs on every `nav` call and opens its own
 # connection lazily — only when it actually resolves a name — so passthrough
-# routing stays a cheap, DB-free classification.
-DB_FREE_COMMANDS = {"init", "bootstrap", "__route"}
+# routing stays a cheap, DB-free classification. `config` only reads the TOML
+# config file and never touches the database.
+DB_FREE_COMMANDS = {"init", "bootstrap", "__route", "config"}
 
 
 @click.group(context_settings={"help_option_names": ["-h", "--help"]})

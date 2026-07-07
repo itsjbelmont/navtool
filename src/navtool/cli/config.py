@@ -21,6 +21,11 @@ DIR_ENV_VAR = "NAVTOOL_DIR"
 
 # Filename of the SQLite database within the data directory.
 DB_FILENAME = "navtool.db"
+# Filename of the (optional, hand-edited) TOML config within the data directory.
+CONFIG_FILENAME = "config.toml"
+
+# Default number of directories each shell session remembers for `nav <`/`nav >`.
+DEFAULT_HISTORY_SIZE = 25
 
 
 def _running_from_source_checkout() -> bool:
@@ -65,3 +70,42 @@ def resolve_db() -> tuple[str, str]:
 def resolve_db_path() -> str:
     """Return just the resolved database path (see :func:`resolve_db`)."""
     return resolve_db()[0]
+
+
+def resolve_config_path() -> str:
+    """Path to the TOML config file within the active data directory.
+
+    The file is optional and hand-edited; navtool never writes it. See
+    :func:`load_config` for how a missing or malformed file is handled.
+    """
+    data_dir, _ = resolve_data_dir()
+    return str(data_dir / CONFIG_FILENAME)
+
+
+def load_config() -> dict:
+    """Read the TOML config file, or return ``{}`` if absent or unreadable.
+
+    Deliberately total: a missing file, a permission error, or a syntax error
+    all yield ``{}`` so callers fall back to defaults. This matters because
+    ``navtool init`` (which bakes config into the shell snippet) is eval'd on
+    every shell startup and must never fail or print noise over a bad config.
+    """
+    import tomllib
+
+    try:
+        with open(resolve_config_path(), "rb") as handle:
+            return tomllib.load(handle)
+    except (OSError, tomllib.TOMLDecodeError):
+        return {}
+
+
+def history_size() -> int:
+    """Configured directory-history cap, or :data:`DEFAULT_HISTORY_SIZE`.
+
+    Reads ``history_size`` from the config file; any missing, non-integer, or
+    non-positive value falls back to the default rather than raising.
+    """
+    value = load_config().get("history_size", DEFAULT_HISTORY_SIZE)
+    if isinstance(value, int) and not isinstance(value, bool) and value > 0:
+        return value
+    return DEFAULT_HISTORY_SIZE

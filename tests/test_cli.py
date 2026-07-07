@@ -416,3 +416,54 @@ def test_route_passes_through_option_flags(run, flag):
     result = run("__route", flag)
     assert result.exit_code == 1
     assert result.output == ""
+
+
+# ----------------- config -----------------
+def test_config_path_points_into_data_dir(run, tmp_path):
+    result = run("config", "path")
+    assert result.exit_code == 0
+    assert result.output.strip() == str(tmp_path / "config.toml")
+
+
+def test_config_show_uses_default_when_no_file(run, tmp_path):
+    from navtool.cli.config import DEFAULT_HISTORY_SIZE
+
+    result = run("config", "show")
+    assert result.exit_code == 0
+    assert "not present" in result.output
+    assert f"history_size:  {DEFAULT_HISTORY_SIZE} (default" in result.output
+
+
+def test_config_show_reads_history_size_from_file(run, tmp_path):
+    (tmp_path / "config.toml").write_text("history_size = 50\n")
+    result = run("config", "show")
+    assert result.exit_code == 0
+    assert "present" in result.output
+    assert "history_size:  50 (from config file)" in result.output
+
+
+def test_history_size_helper_reads_and_validates(tmp_path, monkeypatch):
+    from navtool.cli import config as cfg
+
+    monkeypatch.setenv("NAVTOOL_DIR", str(tmp_path))
+    conf = tmp_path / "config.toml"
+
+    assert cfg.history_size() == cfg.DEFAULT_HISTORY_SIZE  # no file
+
+    conf.write_text("history_size = 10\n")
+    assert cfg.history_size() == 10
+
+    # Non-positive, wrong-type, and bool values all fall back to the default.
+    for bad in ("history_size = 0\n", "history_size = -5\n",
+                'history_size = "lots"\n', "history_size = true\n"):
+        conf.write_text(bad)
+        assert cfg.history_size() == cfg.DEFAULT_HISTORY_SIZE
+
+
+def test_load_config_tolerates_malformed_file(tmp_path, monkeypatch):
+    from navtool.cli import config as cfg
+
+    monkeypatch.setenv("NAVTOOL_DIR", str(tmp_path))
+    (tmp_path / "config.toml").write_text("this is not = valid = toml ][\n")
+    assert cfg.load_config() == {}
+    assert cfg.history_size() == cfg.DEFAULT_HISTORY_SIZE

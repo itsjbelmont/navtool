@@ -8,6 +8,7 @@ object and free of import cycles. :func:`register_commands` wires them together.
 from navtool.cli.commands.add import add
 from navtool.cli.commands.bootstrap import bootstrap
 from navtool.cli.commands.complete import complete
+from navtool.cli.commands.config_group import config_group
 from navtool.cli.commands.db import db_group
 from navtool.cli.commands.init import init
 from navtool.cli.commands.ls import ls
@@ -28,6 +29,7 @@ def register_commands(cli) -> None:
     for command in _TOP_LEVEL:
         cli.add_command(command)
     cli.add_command(db_group)
+    cli.add_command(config_group)
     # Hidden backends for the shell wrappers: completion candidates (complete.py)
     # and `nav` routing (route.py).
     cli.add_command(complete)
