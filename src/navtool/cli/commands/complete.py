@@ -13,6 +13,12 @@ Click delegates the actual file/directory enumeration to its own generated
 shell scripts, which we bypass. So instead of a value we emit a sentinel
 (:data:`DIRS_SENTINEL` / :data:`FILES_SENTINEL`); the wrapper sees it and hands
 off to the shell's native path completion.
+
+The sentinel may also appear *alongside* real candidates: a bare ``nav <word>``
+first word can be a registered name or a directory to ``cd`` into, so we emit
+the name candidates and the directory sentinel together and let the wrapper
+union both. The wrapper therefore scans every emitted line for a sentinel rather
+than only inspecting the first.
 """
 
 import click
@@ -63,15 +69,19 @@ def complete(ctx, nav_wrapper, words):
     engine = ShellComplete(root, {}, "navtool", "_NAVTOOL_COMPLETE")
     items = list(engine.get_completions(args, incomplete))
 
-    # `nav <name>` navigates, so the first word is also a name target. (For
-    # plain `navtool` there is no bare navigation, hence the --nav gate.)
+    # `nav <first word>` resolves to a registered name, or — when no name matches
+    # — falls through to `cd`. So a bare first word can complete as either a name
+    # or a directory, and we offer both (the "cd drop-in" behaviour). The sentinel
+    # is emitted alongside the names so the wrapper unions its own directory
+    # completion in; a purely path-like word skips names and defers entirely.
+    also_dirs = False
     if nav_wrapper and not args:
-        # A path-like first word means `nav` will fall through to `cd`; defer to
-        # the shell for `cd`-style directory completion (e.g. `nav ~/Down<TAB>`).
         if _looks_like_path(incomplete):
+            # e.g. `nav ~/Down<TAB>`, `nav ./s<TAB>` — cd-style, dirs only.
             click.echo(DIRS_SENTINEL)
             return
         items += _name_completion_items(ctx.obj["conn"], incomplete)
+        also_dirs = True
 
     # A filesystem argument can't be enumerated here; defer to the shell.
     types = {item.type for item in items}
@@ -87,3 +97,9 @@ def complete(ctx, nav_wrapper, words):
         if item.value not in seen:
             seen.add(item.value)
             click.echo(item.value)
+
+    # Union directory candidates with the names above so a bare `nav <dir><TAB>`
+    # completes local directories the way `cd` would. The wrapper runs the shell's
+    # own path completion when it sees this sentinel among the emitted candidates.
+    if also_dirs:
+        click.echo(DIRS_SENTINEL)

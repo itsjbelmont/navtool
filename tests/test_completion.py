@@ -131,8 +131,29 @@ def test_nav_path_like_first_word_defers_to_dir_completion(run, tree, word):
     assert lines == [DIRS_SENTINEL]
 
 
-def test_nav_bare_name_word_is_not_treated_as_path(run, tree):
-    # A name (no slash) must still complete as a name, not trigger dir completion.
+def test_nav_bare_word_unions_names_and_dirs(run, tree):
+    # A bare first word can resolve to a name or fall through to `cd`, so `nav`
+    # offers registered names *and* directory completion (the cd drop-in).
     lines = _lines(run("__complete", "--nav", "--", "my"))
-    assert DIRS_SENTINEL not in lines
+    assert "myproj" in lines  # name candidate emitted verbatim
+    assert DIRS_SENTINEL in lines  # ...alongside the dir-completion sentinel
+
+
+def test_nav_empty_first_word_unions_names_and_dirs(run, tree):
+    # `nav <TAB>` with nothing typed still offers both roots and cwd directories.
+    lines = _lines(run("__complete", "--nav", "--", ""))
     assert "myproj" in lines
+    assert "other" in lines
+    assert DIRS_SENTINEL in lines
+
+
+def test_navtool_bare_word_has_no_dir_sentinel(run, tree):
+    # Plain `navtool` has no bare navigation, so no cd-style dir union.
+    lines = _lines(run("__complete", "--", ""))
+    assert DIRS_SENTINEL not in lines
+
+
+def test_nav_pure_path_word_defers_only_to_dirs(run, tree):
+    # A path-like first word is cd-only: the sentinel stands alone, no names.
+    lines = _lines(run("__complete", "--nav", "--", "./s"))
+    assert lines == [DIRS_SENTINEL]
