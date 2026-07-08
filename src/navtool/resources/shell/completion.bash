@@ -19,21 +19,32 @@ _navtool_emit() {
   local -a out
   out=($(navtool __complete $nav_flag -- "${args[@]}" 2>/dev/null))
 
-  # Filesystem argument → let the shell enumerate paths.
-  case "${out[0]}" in
-    $'\x1f__navtool_dirs__')
-      if declare -F _filedir >/dev/null 2>&1; then _filedir -d
-      else COMPREPLY=($(compgen -d -- "$cur")); compopt -o nospace 2>/dev/null; fi
-      return ;;
-    $'\x1f__navtool_files__')
-      if declare -F _filedir >/dev/null 2>&1; then _filedir
-      else COMPREPLY=($(compgen -f -- "$cur")); compopt -o nospace 2>/dev/null; fi
-      return ;;
-  esac
+  # A sentinel may stand alone (a pure filesystem argument) or sit alongside real
+  # candidates (a bare `nav <word>` that could be a name *or* a directory). Sift
+  # every line: keep plain candidates, note which path completions to union in.
+  local -a cands
+  local want_dirs="" want_files="" line
+  for line in "${out[@]}"; do
+    case "$line" in
+      $'\x1f__navtool_dirs__')  want_dirs=1 ;;
+      $'\x1f__navtool_files__') want_files=1 ;;
+      *) cands+=("$line") ;;
+    esac
+  done
 
   # Emit candidates verbatim — never append ':' or a space, so the user adds the
   # next separator. `complete -o nospace` stops bash from adding one either.
-  COMPREPLY=("${out[@]}")
+  COMPREPLY=("${cands[@]}")
+
+  # Union in the shell's own path completion for directory/file arguments.
+  if [[ -n "$want_dirs" ]]; then
+    if declare -F _filedir >/dev/null 2>&1; then _filedir -d
+    else COMPREPLY+=($(compgen -d -- "$cur")); compopt -o nospace 2>/dev/null; fi
+  fi
+  if [[ -n "$want_files" ]]; then
+    if declare -F _filedir >/dev/null 2>&1; then _filedir
+    else COMPREPLY+=($(compgen -f -- "$cur")); compopt -o nospace 2>/dev/null; fi
+  fi
 
   # Realign candidates with what bash considers the current word when it broke
   # the word on ':' (no-op if bash-completion isn't loaded).
